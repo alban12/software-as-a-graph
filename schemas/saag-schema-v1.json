@@ -1,0 +1,171 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SaagGraphSchema",
+  "description": "Software as a Graph (SaaG) Intermediate Representation schema v1.0.0",
+  "type": "object",
+  "required": ["schemaVersion", "metadata", "nodes", "edges"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "enum": ["1.0.0"]
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["projectName", "targetPlatform", "rootPath", "lastSynchronizedAt"],
+      "properties": {
+        "projectName": { "type": "string" },
+        "targetPlatform": {
+          "type": "string",
+          "enum": ["swift", "typescript", "python", "generic"]
+        },
+        "rootPath": { "type": "string" },
+        "lastSynchronizedAt": { "type": "string" },
+        "sourceChecksum": { "type": "string" }
+      }
+    },
+    "nodes": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/SaagNode"
+      }
+    },
+    "edges": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/definitions/SaagEdge"
+      }
+    }
+  },
+  "definitions": {
+    "SaagNode": {
+      "type": "object",
+      "required": ["id", "name", "level", "kind", "inputs", "outputs"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "level": {
+          "type": "string",
+          "enum": ["L1_SYSTEM", "L2_COMPONENT", "L3_EXECUTION"]
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "view",
+            "viewModel",
+            "service",
+            "repository",
+            "externalSystem",
+            "function",
+            "handler",
+            "stateHolder",
+            "decisionBranch"
+          ]
+        },
+        "parentId": { "type": "string" },
+        "inputs": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Port" }
+        },
+        "outputs": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Port" }
+        },
+        "stateProps": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/StateProperty" }
+        },
+        "sourceAnchor": { "$ref": "#/definitions/SourceAnchor" },
+        "canvasMeta": { "$ref": "#/definitions/CanvasMeta" }
+      }
+    },
+    "Port": {
+      "type": "object",
+      "required": ["id", "name", "typeAnnotation", "direction"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "typeAnnotation": { "type": "string" },
+        "schemaSnippet": { "type": "string" },
+        "direction": {
+          "type": "string",
+          "enum": ["input", "output"]
+        },
+        "isAsync": { "type": "boolean" },
+        "canThrow": { "type": "boolean" }
+      }
+    },
+    "StateProperty": {
+      "type": "object",
+      "required": ["name", "typeAnnotation"],
+      "properties": {
+        "name": { "type": "string" },
+        "typeAnnotation": { "type": "string" },
+        "wrapperKind": { "type": "string" },
+        "defaultValue": { "type": "string" },
+        "isReadOnly": { "type": "boolean" }
+      }
+    },
+    "SourceAnchor": {
+      "type": "object",
+      "required": ["filePath", "symbolPath", "startLine", "startColumn", "endLine", "endColumn"],
+      "properties": {
+        "filePath": { "type": "string" },
+        "symbolPath": { "type": "string" },
+        "startLine": { "type": "integer" },
+        "startColumn": { "type": "integer" },
+        "endLine": { "type": "integer" },
+        "endColumn": { "type": "integer" },
+        "symbolChecksum": { "type": "string" }
+      }
+    },
+    "CanvasMeta": {
+      "type": "object",
+      "required": ["position"],
+      "properties": {
+        "position": {
+          "type": "object",
+          "required": ["x", "y"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          }
+        },
+        "width": { "type": "number" },
+        "height": { "type": "number" },
+        "isCollapsed": { "type": "boolean" },
+        "colorTag": { "type": "string" }
+      }
+    },
+    "SaagEdge": {
+      "type": "object",
+      "required": ["id", "sourceNodeId", "sourcePortId", "targetNodeId", "targetPortId", "edgeKind", "executionMode"],
+      "properties": {
+        "id": { "type": "string" },
+        "sourceNodeId": { "type": "string" },
+        "sourcePortId": { "type": "string" },
+        "targetNodeId": { "type": "string" },
+        "targetPortId": { "type": "string" },
+        "edgeKind": {
+          "type": "string",
+          "enum": ["call", "dataTransfer", "stateBinding", "eventEmit", "dependencyInject"]
+        },
+        "executionMode": {
+          "type": "string",
+          "enum": ["sync", "async", "reactive_stream"]
+        },
+        "contract": {
+          "type": "object",
+          "required": ["payloadType"],
+          "properties": {
+            "payloadType": { "type": "string" },
+            "guarantees": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "errorType": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

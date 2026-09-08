@@ -1,0 +1,402 @@
+{
+  "schemaVersion": "1.0.0",
+  "metadata": {
+    "lastSynchronizedAt": "2026-09-08T00:45:29.806Z",
+    "projectName": "AuthSample",
+    "rootPath": "/Users/alban/Library/Mobile Documents/com~apple~CloudDocs/Desktop/Core activities/[Open Source] Github/saag/software-as-a-graph/examples/ios-auth-sample/Sources",
+    "targetPlatform": "swift"
+  },
+  "nodes": {
+    "node_authserviceprotocol": {
+      "canvasMeta": {
+        "isCollapsed": false,
+        "position": {
+          "x": 820,
+          "y": 100
+        }
+      },
+      "id": "node_authserviceprotocol",
+      "inputs": [
+        {
+          "canThrow": true,
+          "direction": "input",
+          "id": "port_authserviceprotocol_authenticate",
+          "isAsync": true,
+          "name": "authenticate(credentials: Credentials)",
+          "typeAnnotation": "(credentials: Credentials) -> UserSession"
+        }
+      ],
+      "kind": "service",
+      "level": "L2_COMPONENT",
+      "name": "AuthServiceProtocol",
+      "outputs": [
+        {
+          "direction": "output",
+          "id": "node_authserviceprotocol_out_result",
+          "name": "onResult",
+          "typeAnnotation": "Result<Any, Error>"
+        }
+      ],
+      "sourceAnchor": {
+        "endColumn": 1,
+        "endLine": 4,
+        "filePath": "AuthSample/AuthService.swift",
+        "startColumn": 1,
+        "startLine": 2,
+        "symbolPath": "AuthServiceProtocol"
+      }
+    },
+    "node_authviewmodel": {
+      "canvasMeta": {
+        "isCollapsed": false,
+        "position": {
+          "x": 450,
+          "y": 100
+        }
+      },
+      "id": "node_authviewmodel",
+      "inputs": [
+        {
+          "canThrow": false,
+          "direction": "input",
+          "id": "port_authviewmodel_validate",
+          "isAsync": false,
+          "name": "validate()",
+          "typeAnnotation": "Bool"
+        },
+        {
+          "canThrow": false,
+          "direction": "input",
+          "id": "port_authviewmodel_login",
+          "isAsync": true,
+          "name": "login(credentials: Credentials)",
+          "typeAnnotation": "(credentials: Credentials) -> Void"
+        }
+      ],
+      "kind": "viewModel",
+      "level": "L2_COMPONENT",
+      "name": "AuthViewModel",
+      "outputs": [
+        {
+          "direction": "output",
+          "id": "node_authviewmodel_out_result",
+          "name": "onResult",
+          "typeAnnotation": "Result<Any, Error>"
+        }
+      ],
+      "sourceAnchor": {
+        "endColumn": 1,
+        "endLine": 68,
+        "filePath": "AuthSample/AuthViewModel.swift",
+        "startColumn": 1,
+        "startLine": 3,
+        "symbolPath": "AuthViewModel"
+      },
+      "stateProps": [
+        {
+          "defaultValue": "\"\"",
+          "isReadOnly": false,
+          "name": "email",
+          "typeAnnotation": "String"
+        },
+        {
+          "defaultValue": "\"\"",
+          "isReadOnly": false,
+          "name": "password",
+          "typeAnnotation": "String"
+        },
+        {
+          "defaultValue": "false",
+          "isReadOnly": false,
+          "name": "isLoading",
+          "typeAnnotation": "Bool"
+        },
+        {
+          "defaultValue": "nil",
+          "isReadOnly": false,
+          "name": "errorMessage",
+          "typeAnnotation": "String?"
+        },
+        {
+          "defaultValue": "nil",
+          "isReadOnly": false,
+          "name": "activeSession",
+          "typeAnnotation": "UserSession?"
+        },
+        {
+          "isReadOnly": true,
+          "name": "authService",
+          "typeAnnotation": "AuthServiceProtocol"
+        },
+        {
+          "isReadOnly": true,
+          "name": "tokenStorage",
+          "typeAnnotation": "TokenStorageProtocol"
+        }
+      ]
+    },
+    "node_keychainstorage": {
+      "canvasMeta": {
+        "isCollapsed": false,
+        "position": {
+          "x": 1190,
+          "y": 100
+        }
+      },
+      "id": "node_keychainstorage",
+      "inputs": [
+        {
+          "canThrow": true,
+          "direction": "input",
+          "id": "port_keychainstorage_save",
+          "isAsync": true,
+          "name": "save(token: String)",
+          "typeAnnotation": "(token: String) -> Void"
+        },
+        {
+          "canThrow": false,
+          "direction": "input",
+          "id": "port_keychainstorage_retrieve",
+          "isAsync": true,
+          "name": "retrieve()",
+          "typeAnnotation": "String?"
+        },
+        {
+          "canThrow": true,
+          "direction": "input",
+          "id": "port_keychainstorage_clear",
+          "isAsync": true,
+          "name": "clear()",
+          "typeAnnotation": "Void"
+        }
+      ],
+      "kind": "repository",
+      "level": "L2_COMPONENT",
+      "name": "KeychainStorage",
+      "outputs": [],
+      "sourceAnchor": {
+        "endColumn": 1,
+        "endLine": 24,
+        "filePath": "AuthSample/KeychainStorage.swift",
+        "startColumn": 1,
+        "startLine": 8,
+        "symbolPath": "KeychainStorage"
+      },
+      "stateProps": [
+        {
+          "isReadOnly": false,
+          "name": "memoryStore",
+          "typeAnnotation": "String?"
+        }
+      ]
+    },
+    "node_liveauthservice": {
+      "canvasMeta": {
+        "isCollapsed": false,
+        "position": {
+          "x": 820,
+          "y": 300
+        }
+      },
+      "id": "node_liveauthservice",
+      "inputs": [
+        {
+          "canThrow": true,
+          "direction": "input",
+          "id": "port_liveauthservice_authenticate",
+          "isAsync": true,
+          "name": "authenticate(credentials: Credentials)",
+          "typeAnnotation": "(credentials: Credentials) -> UserSession"
+        }
+      ],
+      "kind": "service",
+      "level": "L2_COMPONENT",
+      "name": "LiveAuthService",
+      "outputs": [
+        {
+          "direction": "output",
+          "id": "node_liveauthservice_out_result",
+          "name": "onResult",
+          "typeAnnotation": "Result<Any, Error>"
+        }
+      ],
+      "sourceAnchor": {
+        "endColumn": 1,
+        "endLine": 20,
+        "filePath": "AuthSample/AuthService.swift",
+        "startColumn": 1,
+        "startLine": 6,
+        "symbolPath": "LiveAuthService"
+      }
+    },
+    "node_loginview": {
+      "canvasMeta": {
+        "isCollapsed": false,
+        "position": {
+          "x": 80,
+          "y": 100
+        }
+      },
+      "id": "node_loginview",
+      "inputs": [],
+      "kind": "view",
+      "level": "L2_COMPONENT",
+      "name": "LoginView",
+      "outputs": [
+        {
+          "direction": "output",
+          "id": "node_loginview_out_user_action",
+          "name": "onUserAction",
+          "typeAnnotation": "Void"
+        }
+      ],
+      "sourceAnchor": {
+        "endColumn": 1,
+        "endLine": 40,
+        "filePath": "AuthSample/LoginView.swift",
+        "startColumn": 1,
+        "startLine": 2,
+        "symbolPath": "LoginView"
+      },
+      "stateProps": [
+        {
+          "isReadOnly": false,
+          "name": "viewModel",
+          "typeAnnotation": "AuthViewModel",
+          "wrapperKind": "@State"
+        },
+        {
+          "defaultValue": "\"\"",
+          "isReadOnly": false,
+          "name": "inputEmail",
+          "typeAnnotation": "String",
+          "wrapperKind": "@State"
+        },
+        {
+          "defaultValue": "\"\"",
+          "isReadOnly": false,
+          "name": "inputPassword",
+          "typeAnnotation": "String",
+          "wrapperKind": "@State"
+        }
+      ]
+    },
+    "node_tokenstorageprotocol": {
+      "canvasMeta": {
+        "isCollapsed": false,
+        "position": {
+          "x": 820,
+          "y": 500
+        }
+      },
+      "id": "node_tokenstorageprotocol",
+      "inputs": [
+        {
+          "canThrow": true,
+          "direction": "input",
+          "id": "port_tokenstorageprotocol_save",
+          "isAsync": true,
+          "name": "save(token: String)",
+          "typeAnnotation": "(token: String) -> Void"
+        },
+        {
+          "canThrow": false,
+          "direction": "input",
+          "id": "port_tokenstorageprotocol_retrieve",
+          "isAsync": true,
+          "name": "retrieve()",
+          "typeAnnotation": "String?"
+        },
+        {
+          "canThrow": true,
+          "direction": "input",
+          "id": "port_tokenstorageprotocol_clear",
+          "isAsync": true,
+          "name": "clear()",
+          "typeAnnotation": "Void"
+        }
+      ],
+      "kind": "service",
+      "level": "L2_COMPONENT",
+      "name": "TokenStorageProtocol",
+      "outputs": [
+        {
+          "direction": "output",
+          "id": "node_tokenstorageprotocol_out_result",
+          "name": "onResult",
+          "typeAnnotation": "Result<Any, Error>"
+        }
+      ],
+      "sourceAnchor": {
+        "endColumn": 1,
+        "endLine": 6,
+        "filePath": "AuthSample/KeychainStorage.swift",
+        "startColumn": 1,
+        "startLine": 2,
+        "symbolPath": "TokenStorageProtocol"
+      }
+    }
+  },
+  "edges": {
+    "edge_node_authviewmodel_to_node_authserviceprotocol_authenticate": {
+      "id": "edge_node_authviewmodel_to_node_authserviceprotocol_authenticate",
+      "sourceNodeId": "node_authviewmodel",
+      "sourcePortId": "node_authviewmodel_out_result",
+      "targetNodeId": "node_authserviceprotocol",
+      "targetPortId": "port_authserviceprotocol_authenticate",
+      "edgeKind": "call",
+      "executionMode": "async",
+      "contract": {
+        "payloadType": "(credentials: Credentials) -> UserSession"
+      }
+    },
+    "edge_node_authviewmodel_to_node_keychainstorage_save": {
+      "id": "edge_node_authviewmodel_to_node_keychainstorage_save",
+      "sourceNodeId": "node_authviewmodel",
+      "sourcePortId": "node_authviewmodel_out_result",
+      "targetNodeId": "node_keychainstorage",
+      "targetPortId": "port_keychainstorage_save",
+      "edgeKind": "call",
+      "executionMode": "async",
+      "contract": {
+        "payloadType": "(token: String) -> Void"
+      }
+    },
+    "edge_node_authviewmodel_to_node_liveauthservice_authenticate": {
+      "id": "edge_node_authviewmodel_to_node_liveauthservice_authenticate",
+      "sourceNodeId": "node_authviewmodel",
+      "sourcePortId": "node_authviewmodel_out_result",
+      "targetNodeId": "node_liveauthservice",
+      "targetPortId": "port_liveauthservice_authenticate",
+      "edgeKind": "call",
+      "executionMode": "async",
+      "contract": {
+        "payloadType": "(credentials: Credentials) -> UserSession"
+      }
+    },
+    "edge_node_authviewmodel_to_node_tokenstorageprotocol_save": {
+      "id": "edge_node_authviewmodel_to_node_tokenstorageprotocol_save",
+      "sourceNodeId": "node_authviewmodel",
+      "sourcePortId": "node_authviewmodel_out_result",
+      "targetNodeId": "node_tokenstorageprotocol",
+      "targetPortId": "port_tokenstorageprotocol_save",
+      "edgeKind": "call",
+      "executionMode": "async",
+      "contract": {
+        "payloadType": "(token: String) -> Void"
+      }
+    },
+    "edge_node_loginview_to_node_authviewmodel_login": {
+      "id": "edge_node_loginview_to_node_authviewmodel_login",
+      "sourceNodeId": "node_loginview",
+      "sourcePortId": "node_loginview_out_user_action",
+      "targetNodeId": "node_authviewmodel",
+      "targetPortId": "port_authviewmodel_login",
+      "edgeKind": "eventEmit",
+      "executionMode": "async",
+      "contract": {
+        "payloadType": "(credentials: Credentials) -> Void"
+      }
+    }
+  }
+}

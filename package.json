@@ -1,0 +1,16 @@
+{
+  "name": "software-as-a-graph",
+  "version": "1.0.0",
+  "description": "A shared graph representation of your software and its dependencies that you can view, edit and agree on with your coding agent.",
+  "scripts": {
+    "canvas": "node packages/canvas-ui/server.js",
+    "canvas:dev": "npm --prefix packages/canvas-ui run dev",
+    "canvas:build": "npm --prefix packages/canvas-ui run build",
+    "extract:sample": "DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift run --package-path packages/extractor-swift saag-swift extract --path examples/ios-auth-sample/Sources --project 'AuthSample' --output examples/ios-auth-sample/.saag/graph.json",
+    "test:sample": "DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift test --package-path examples/ios-auth-sample",
+    "test:extractor": "DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift test --package-path packages/extractor-swift"
+  },
+  "keywords": ["software-as-a-graph", "architecture", "coding-agent", "dataflow", "ast", "swiftui"],
+  "author": "Alban & Antigravity",
+  "license": "MIT"
+}
