@@ -5,6 +5,7 @@ public struct LoginView: View {
     @State private var viewModel: AuthViewModel
     @State private var inputEmail: String = ""
     @State private var inputPassword: String = ""
+    @State private var showBiometricPrompt: Bool = false
 
     public init(viewModel: AuthViewModel? = nil) {
         _viewModel = State(initialValue: viewModel ?? AuthViewModel())
@@ -23,19 +24,33 @@ public struct LoginView: View {
             }
 
             Button {
-                Task {
-                    let credentials = Credentials(email: inputEmail, password: inputPassword)
-                    await viewModel.login(credentials: credentials)
-                }
+                showBiometricPrompt = true
             } label: {
                 if viewModel.isLoading {
                     ProgressView()
                 } else {
-                    Text("Log In")
+                    Text("Sign In")
                 }
             }
             .disabled(viewModel.isLoading)
         }
         .padding()
+        .sheet(isPresented: $showBiometricPrompt) {
+            BiometricApprovalView(
+                viewModel: viewModel,
+                credentials: Credentials(email: inputEmail, password: inputPassword)
+            )
+        }
     }
 }
+
+#Preview("Default State") {
+    LoginView()
+}
+
+#Preview("Error State") {
+    let vm = AuthViewModel()
+    vm.errorMessage = "Password must be at least 6 characters."
+    return LoginView(viewModel: vm)
+}
+

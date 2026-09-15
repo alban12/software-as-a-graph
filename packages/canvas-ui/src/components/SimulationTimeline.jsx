@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Pause, SkipBack, SkipForward, RotateCcw, X, Info, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, RotateCcw, X, Info, CheckCircle2, AlertCircle, Sparkles, Zap, HardDrive, Cpu } from 'lucide-react';
 
 export default function SimulationTimeline({
   simulation,
@@ -7,6 +7,7 @@ export default function SimulationTimeline({
   onStepChange,
   onClose,
   onExportTest,
+  onOpenProfiler,
   isPlaying,
   setIsPlaying
 }) {
@@ -104,6 +105,11 @@ export default function SimulationTimeline({
               >
                 <span className="step-num">{idx + 1}</span>
                 <span className="step-name">{step.title}</span>
+                {step.perfMetrics?.latencyMs !== undefined && (
+                  <span className={`step-latency-badge ${step.perfMetrics.latencyMs > 250 ? 'bottleneck' : ''}`}>
+                    {step.perfMetrics.latencyMs > 250 ? '⏳' : '⚡'}{step.perfMetrics.latencyMs}ms
+                  </span>
+                )}
               </div>
             );
           })}
@@ -111,6 +117,16 @@ export default function SimulationTimeline({
 
         {/* Right Action buttons */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            className="btn-pill"
+            style={{ padding: '5px 10px', fontSize: '11px', borderColor: '#f59e0b', color: '#f59e0b', display: 'flex', alignItems: 'center', gap: 5 }}
+            onClick={onOpenProfiler}
+            title="Open Dataflow Performance & Latency Waterfall Profiler"
+          >
+            <Zap size={13} color="#f59e0b" />
+            <span>Profiler</span>
+          </button>
+
           <button
             className="btn-pill"
             style={{ padding: '5px 10px', fontSize: '11px', borderColor: 'var(--color-viewmodel)', color: 'var(--color-viewmodel)' }}
@@ -158,6 +174,24 @@ export default function SimulationTimeline({
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.5', margin: '4px 0' }}>
             {currentStep.explanation}
           </div>
+
+          {/* Performance Telemetry Row */}
+          {currentStep.perfMetrics && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, background: 'rgba(15, 23, 42, 0.6)', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', border: '1px solid rgba(255,255,255,0.06)', margin: '4px 0' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: currentStep.perfMetrics.latencyMs > 250 ? '#f43f5e' : '#10b981', fontWeight: 600 }}>
+                <Zap size={12} />
+                Latency: {currentStep.perfMetrics.latencyMs} ms {currentStep.perfMetrics.isCriticalPath ? '🔥 (Critical Path Bottleneck)' : ''}
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#c084fc' }}>
+                <HardDrive size={12} />
+                Memory Delta: {currentStep.perfMetrics.memoryDeltaMb > 0 ? `+${currentStep.perfMetrics.memoryDeltaMb}` : currentStep.perfMetrics.memoryDeltaMb} MB
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#94a3b8' }}>
+                <Cpu size={12} />
+                CPU Time: {currentStep.perfMetrics.cpuTimeMs} ms
+              </span>
+            </div>
+          )}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 6 }}>
             {/* Intermediate Payload */}

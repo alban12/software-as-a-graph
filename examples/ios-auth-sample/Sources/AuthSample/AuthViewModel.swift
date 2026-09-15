@@ -34,6 +34,19 @@ public final class AuthViewModel {
         return true
     }
 
+    /// Auto-refresh token listener when day changes (demonstrates escaping retain cycle risk)
+    public func monitorSessionRenewal() {
+        NotificationCenter.default.addObserver(forName: .NSCalendarDayChanged, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated {
+                self.refreshTokens()
+            }
+        }
+    }
+
+    public func refreshTokens() {
+        // Token refresh logic
+    }
+
     public func login(credentials: Credentials) async {
         self.email = credentials.email
         self.password = credentials.password

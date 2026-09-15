@@ -34,6 +34,9 @@
       "additionalProperties": {
         "$ref": "#/definitions/SaagEdge"
       }
+    },
+    "activeWorkspace": {
+      "$ref": "#/definitions/AgentWorkspace"
     }
   },
   "definitions": {
@@ -74,6 +77,15 @@
           "type": "array",
           "items": { "$ref": "#/definitions/StateProperty" }
         },
+        "viewElements": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ViewElement" }
+        },
+        "isTransient": { "type": "boolean" },
+        "isSqueezed": { "type": "boolean" },
+        "serviceMeta": { "$ref": "#/definitions/ServiceMeta" },
+        "previewMeta": { "$ref": "#/definitions/PreviewMeta" },
+        "perfMeta": { "$ref": "#/definitions/NodePerfMeta" },
         "sourceAnchor": { "$ref": "#/definitions/SourceAnchor" },
         "canvasMeta": { "$ref": "#/definitions/CanvasMeta" }
       }
@@ -103,6 +115,34 @@
         "wrapperKind": { "type": "string" },
         "defaultValue": { "type": "string" },
         "isReadOnly": { "type": "boolean" }
+      }
+    },
+    "PreviewMeta": {
+      "type": "object",
+      "required": ["hasPreview"],
+      "properties": {
+        "hasPreview": { "type": "boolean" },
+        "previewKind": {
+          "type": "string",
+          "enum": ["device_frame", "component_mockup", "live_render"]
+        },
+        "deviceFrame": {
+          "type": "string",
+          "enum": ["iphone-16-pro", "ipad", "mac"]
+        },
+        "variants": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "name"],
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "previewUrl": { "type": "string" },
+              "stateDescription": { "type": "string" }
+            }
+          }
+        }
       }
     },
     "SourceAnchor": {
@@ -164,7 +204,113 @@
             },
             "errorType": { "type": "string" }
           }
+        },
+        "perfMeta": { "$ref": "#/definitions/EdgePerfMeta" }
+      }
+    },
+    "ViewElement": {
+      "type": "object",
+      "required": ["id", "type", "label"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": {
+          "type": "string",
+          "enum": ["textField", "secureField", "button", "text", "progressView", "toggle"]
+        },
+        "label": { "type": "string" },
+        "binding": { "type": "string" },
+        "action": { "type": "string" },
+        "startLine": { "type": "integer" },
+        "endLine": { "type": "integer" }
+      }
+    },
+    "ServiceMeta": {
+      "type": "object",
+      "required": ["serviceType"],
+      "properties": {
+        "serviceType": { "type": "string" },
+        "provider": { "type": "string" },
+        "projectRef": { "type": "string" },
+        "status": { "type": "string" },
+        "consoleUrl": { "type": "string" },
+        "collections": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "endpoints": {
+          "type": "array",
+          "items": { "type": "string" }
         }
+      }
+    },
+    "BoundaryPort": {
+      "type": "object",
+      "required": ["nodeId", "portId", "portName", "direction", "typeAnnotation"],
+      "properties": {
+        "nodeId": { "type": "string" },
+        "nodeName": { "type": "string" },
+        "portId": { "type": "string" },
+        "portName": { "type": "string" },
+        "direction": { "type": "string", "enum": ["input", "output"] },
+        "typeAnnotation": { "type": "string" },
+        "connectedToNodeId": { "type": "string" },
+        "connectedToNodeName": { "type": "string" }
+      }
+    },
+    "AgentWorkspace": {
+      "type": "object",
+      "required": ["id", "name", "lockedNodeIds", "allowedFilePaths", "frozenBoundaryPorts"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "lockedNodeIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "allowedFilePaths": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "frozenBoundaryPorts": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/BoundaryPort" }
+        },
+        "forbiddenFilePaths": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "agentPrompt": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "RetainCycleRisk": {
+      "type": "object",
+      "required": ["symbol", "line", "description", "severity", "suggestion"],
+      "properties": {
+        "symbol": { "type": "string" },
+        "line": { "type": "integer" },
+        "description": { "type": "string" },
+        "severity": { "type": "string", "enum": ["warning", "critical"] },
+        "suggestion": { "type": "string" }
+      }
+    },
+    "NodePerfMeta": {
+      "type": "object",
+      "properties": {
+        "retainCycleRisks": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/RetainCycleRisk" }
+        },
+        "estimatedMemoryMb": { "type": "number" },
+        "cpuTimeMs": { "type": "number" }
+      }
+    },
+    "EdgePerfMeta": {
+      "type": "object",
+      "properties": {
+        "averageLatencyMs": { "type": "number" },
+        "isCriticalPath": { "type": "boolean" }
       }
     }
   }

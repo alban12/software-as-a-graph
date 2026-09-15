@@ -44,6 +44,85 @@ export const PRESET_SCENARIOS = [
 ];
 
 function generateHappyPathTrace(graph) {
+  const hasBiometric = Boolean(graph?.nodes?.node_biometricapprovalview);
+
+  if (hasBiometric) {
+    return [
+      {
+        stepIndex: 0,
+        title: 'User Taps Login Button',
+        activeNodeId: 'node_loginview',
+        activeEdgeId: null,
+        portId: 'node_loginview_out_user_action',
+        status: 'success',
+        payload: { email: 'alban@example.com', password: 'password123' },
+        mutations: {
+          node_loginview: { inputEmail: 'alban@example.com', inputPassword: '•••••••••••' }
+        },
+        perfMetrics: { latencyMs: 4, memoryDeltaMb: 0.2, cpuTimeMs: 2, isCriticalPath: false },
+        explanation: 'User taps Submit button in LoginView. Form state is packaged into a Credentials struct and emitted.'
+      },
+      {
+        stepIndex: 1,
+        title: '⚡ Squeezed Pass-Through: Biometric Approval',
+        activeNodeId: 'node_biometricapprovalview',
+        activeEdgeId: 'edge_node_loginview_to_node_biometricapprovalview',
+        portId: 'port_biometricapprovalview_requestApproval',
+        status: 'success',
+        payload: { email: 'alban@example.com', password: 'password123' },
+        mutations: {
+          node_biometricapprovalview: { isApproved: true }
+        },
+        perfMetrics: { latencyMs: 12, memoryDeltaMb: 0.8, cpuTimeMs: 6, isCriticalPath: false },
+        explanation: 'BiometricApprovalView is marked as transient and squeezed. Passes through credentials automatically to AuthViewModel.'
+      },
+      {
+        stepIndex: 2,
+        title: 'Dispatch to AuthViewModel',
+        activeNodeId: 'node_authviewmodel',
+        activeEdgeId: 'edge_node_biometricapprovalview_to_node_authviewmodel',
+        portId: 'port_authviewmodel_login',
+        status: 'success',
+        payload: { email: 'alban@example.com', password: 'password123' },
+        mutations: {
+          node_authviewmodel: { isLoading: true, errorMessage: null }
+        },
+        perfMetrics: { latencyMs: 8, memoryDeltaMb: 0.5, cpuTimeMs: 5, isCriticalPath: false },
+        explanation: 'AuthViewModel.login(credentials:) receives payload. guard validate() passes. Sets isLoading = true.'
+      },
+      {
+        stepIndex: 3,
+        title: 'Async Call: LiveAuthService (Firebase)',
+        activeNodeId: 'node_liveauthservice',
+        activeEdgeId: 'edge_node_authviewmodel_to_node_liveauthservice_authenticate',
+        portId: 'port_liveauthservice_authenticate',
+        status: 'success',
+        payload: { email: 'alban@example.com', password: 'password123' },
+        mutations: {},
+        perfMetrics: { latencyMs: 380, memoryDeltaMb: 14.2, cpuTimeMs: 44, isCriticalPath: true },
+        explanation: 'LiveAuthService authenticates with Firebase identitytoolkit.googleapis.com gateway. Returns active UserSession token.'
+      },
+      {
+        stepIndex: 4,
+        title: 'Save Token in KeychainStorage',
+        activeNodeId: 'node_keychainstorage',
+        activeEdgeId: 'edge_node_authviewmodel_to_node_keychainstorage_save',
+        portId: 'port_keychainstorage_save',
+        status: 'success',
+        payload: { token: 'jwt_mock_token_abc123' },
+        mutations: {
+          node_keychainstorage: { memoryStore: 'jwt_mock_token_abc123' },
+          node_authviewmodel: {
+            isLoading: false,
+            activeSession: { userId: 'user_mock_42', token: 'jwt_mock_token_abc123' }
+          }
+        },
+        perfMetrics: { latencyMs: 15, memoryDeltaMb: -1.2, cpuTimeMs: 8, isCriticalPath: false },
+        explanation: 'KeychainStorage.save(token:) securely persists JWT token in iOS Keychain. AuthViewModel updates activeSession and clears isLoading.'
+      }
+    ];
+  }
+
   return [
     {
       stepIndex: 0,
@@ -56,6 +135,7 @@ function generateHappyPathTrace(graph) {
       mutations: {
         node_loginview: { inputEmail: 'alban@example.com', inputPassword: '•••••••••••' }
       },
+      perfMetrics: { latencyMs: 4, memoryDeltaMb: 0.2, cpuTimeMs: 2, isCriticalPath: false },
       explanation: 'User taps Submit button in LoginView. Form state is packaged into a Credentials struct and emitted.'
     },
     {
@@ -69,6 +149,7 @@ function generateHappyPathTrace(graph) {
       mutations: {
         node_authviewmodel: { isLoading: true, errorMessage: null }
       },
+      perfMetrics: { latencyMs: 8, memoryDeltaMb: 0.5, cpuTimeMs: 5, isCriticalPath: false },
       explanation: 'AuthViewModel.login(credentials:) receives payload. guard validate() passes. Sets isLoading = true.'
     },
     {
@@ -80,6 +161,7 @@ function generateHappyPathTrace(graph) {
       status: 'success',
       payload: { email: 'alban@example.com', password: 'password123' },
       mutations: {},
+      perfMetrics: { latencyMs: 380, memoryDeltaMb: 14.2, cpuTimeMs: 44, isCriticalPath: true },
       explanation: 'LiveAuthService receives credentials over network call. Credentials validated, returns UserSession token.'
     },
     {
@@ -97,6 +179,7 @@ function generateHappyPathTrace(graph) {
           activeSession: { userId: 'user_mock_42', token: 'jwt_mock_token_abc123' }
         }
       },
+      perfMetrics: { latencyMs: 15, memoryDeltaMb: -1.2, cpuTimeMs: 8, isCriticalPath: false },
       explanation: 'KeychainStorage.save(token:) securely persists JWT token. AuthViewModel updates activeSession and clears isLoading.'
     }
   ];
@@ -115,6 +198,7 @@ function generateValidationErrorTrace(graph) {
       mutations: {
         node_loginview: { inputEmail: 'alban@example.com', inputPassword: '•••' }
       },
+      perfMetrics: { latencyMs: 4, memoryDeltaMb: 0.2, cpuTimeMs: 2, isCriticalPath: false },
       explanation: 'User enters a 3-character password and taps Login.'
     },
     {
@@ -131,6 +215,7 @@ function generateValidationErrorTrace(graph) {
           isLoading: false
         }
       },
+      perfMetrics: { latencyMs: 2, memoryDeltaMb: 0.1, cpuTimeMs: 1, isCriticalPath: false },
       explanation: 'guard validate() evaluates false (password.count < 6). errorMessage state mutated. Downstream network call HALTED.'
     }
   ];
@@ -147,6 +232,7 @@ function generateAuthErrorTrace(graph) {
       status: 'success',
       payload: { email: 'alban@example.com', password: 'wrongpass' },
       mutations: {},
+      perfMetrics: { latencyMs: 4, memoryDeltaMb: 0.2, cpuTimeMs: 2, isCriticalPath: false },
       explanation: 'User submits valid format credentials with incorrect password.'
     },
     {
@@ -158,6 +244,7 @@ function generateAuthErrorTrace(graph) {
       status: 'success',
       payload: { email: 'alban@example.com', password: 'wrongpass' },
       mutations: { node_authviewmodel: { isLoading: true, errorMessage: null } },
+      perfMetrics: { latencyMs: 8, memoryDeltaMb: 0.5, cpuTimeMs: 5, isCriticalPath: false },
       explanation: 'Validation passes. ViewModel enters loading state and invokes AuthService.'
     },
     {
@@ -174,6 +261,7 @@ function generateAuthErrorTrace(graph) {
           errorMessage: 'Invalid email or password.'
         }
       },
+      perfMetrics: { latencyMs: 290, memoryDeltaMb: 4.8, cpuTimeMs: 32, isCriticalPath: true },
       explanation: 'LiveAuthService throws AuthError.invalidCredentials. AuthViewModel catches error, sets errorMessage, halts before TokenStorage.'
     }
   ];

@@ -44,3 +44,4 @@ DerivedData/
 # Scratch & Logs
 *.log
 scratch/
+benchmarks/

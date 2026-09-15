@@ -1,0 +1,41 @@
+{
+  "id": "scope_z5my2aho",
+  "name": "Auth Subsystem Scope",
+  "description": "Agent scope locking 2 nodes with 2 boundary contracts",
+  "lockedNodeIds": [
+    "node_authviewmodel",
+    "node_liveauthservice"
+  ],
+  "allowedFilePaths": [
+    "AuthSample/AuthService.swift",
+    "AuthSample/AuthViewModel.swift"
+  ],
+  "frozenBoundaryPorts": [
+    {
+      "nodeId": "node_authviewmodel",
+      "nodeName": "AuthViewModel",
+      "portId": "port_authviewmodel_login",
+      "portName": "login(credentials: Credentials)",
+      "direction": "input",
+      "typeAnnotation": "(credentials: Credentials) -> Void",
+      "connectedToNodeId": "node_biometricapprovalview",
+      "connectedToNodeName": "BiometricApprovalView"
+    },
+    {
+      "nodeId": "node_authviewmodel",
+      "nodeName": "AuthViewModel",
+      "portId": "node_authviewmodel_out_result",
+      "portName": "onResult",
+      "direction": "output",
+      "typeAnnotation": "Result<Any, Error>",
+      "connectedToNodeId": "node_tokenstorageprotocol",
+      "connectedToNodeName": "TokenStorageProtocol"
+    }
+  ],
+  "forbiddenFilePaths": [
+    "AuthSample/BiometricApprovalView.swift",
+    "AuthSample/KeychainStorage.swift",
+    "AuthSample/LoginView.swift"
+  ],
+  "agentPrompt": "# Autonomous AI Agent Scoping Contract\n**Scope Name:** Auth Subsystem Scope\n**Scope ID:** `scope_z5my2aho`\n**Target Components:** AuthViewModel, LiveAuthService\n\n## 1. Allowed Files (READ/WRITE PERMISSION GRANTED)\nYou are STRICTLY authorized to inspect and modify ONLY the following files:\n- `AuthSample/AuthService.swift`\n- `AuthSample/AuthViewModel.swift`\n\n## 2. Frozen Boundary Contracts (IMMUTABLE INTERFACES)\nThe following socket signatures define external boundaries connecting to other architectural subsystems. You MUST NOT change method names, argument types, or return types for these interfaces:\n- **📥 IN** `AuthViewModel.login(credentials: Credentials)`: `(credentials: Credentials) -> Void` (connected with BiometricApprovalView) [IMMUTABLE]\n- **📤 OUT** `AuthViewModel.onResult`: `Result<Any, Error>` (connected with TokenStorageProtocol) [IMMUTABLE]\n\n## 3. Forbidden Files (ACCESS DENIED)\nDo NOT modify, delete, or rename any of the following files:\n- `AuthSample/BiometricApprovalView.swift`\n- `AuthSample/KeychainStorage.swift`\n- `AuthSample/LoginView.swift`\n\n## 4. Architectural Rules\n- Preserve all existing public contracts on boundary types.\n- Every code modification must satisfy `swift test`.\n- Any change to files outside Section 1 will trigger an immediate architectural scope violation.\n"
+}
