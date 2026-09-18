@@ -1,11 +1,12 @@
 import React from 'react';
-import { Plus, LayoutGrid, Save, RefreshCw, Radio, Bot, Lock, Zap } from 'lucide-react';
+import { Plus, LayoutGrid, Save, RefreshCw, Radio, Bot, Lock, Zap, AlertTriangle, FolderTree, Move } from 'lucide-react';
 
 export default function Toolbar({
   metadata,
   nodeCount,
   edgeCount,
   onAutoLayout,
+  onRearrangeAndPack,
   onSave,
   onOpenSimulation,
   isSaving,
@@ -19,7 +20,18 @@ export default function Toolbar({
   abstractionLevel = 'L1',
   onLevelChange,
   visibleNodeCount,
-  totalNodeCount
+  totalNodeCount,
+  bottleneckCount = 0,
+  isBottleneckLensActive = false,
+  onToggleBottleneckLens,
+  onOpenBottlenecks,
+  layoutMode = 'tree',
+  onLayoutModeChange,
+  branches = [],
+  activeBranchId = 'all',
+  onSelectBranch,
+  isTreeNavigatorOpen = false,
+  onToggleTreeNavigator
 }) {
   return (
     <header className="saag-toolbar glass-panel">
@@ -76,6 +88,26 @@ export default function Toolbar({
           </button>
         </div>
 
+        {/* Layout Mode Switcher: Tree View vs Pipeline */}
+        <div className="layout-mode-selector" role="group" aria-label="Layout Mode">
+          <button
+            className={`level-segment ${layoutMode === 'tree' ? 'active' : ''}`}
+            onClick={() => onLayoutModeChange && onLayoutModeChange('tree')}
+            title="Tree View: Tab-as-a-Branch hierarchy with zero edge crossings"
+          >
+            <span>🌳 Tree View</span>
+          </button>
+          <button
+            className={`level-segment ${layoutMode === 'pipeline' ? 'active' : ''}`}
+            onClick={() => onLayoutModeChange && onLayoutModeChange('pipeline')}
+            title="Pipeline View: Left-to-right sequential architectural stages"
+          >
+            <span>🏢 Pipeline</span>
+          </button>
+        </div>
+
+
+
         <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
           {visibleNodeCount !== undefined && totalNodeCount !== undefined
             ? `${visibleNodeCount} / ${totalNodeCount} nodes`
@@ -88,9 +120,35 @@ export default function Toolbar({
       </div>
 
       <div className="toolbar-actions">
+        <button
+          className={`btn-pill ${isTreeNavigatorOpen ? 'active' : ''}`}
+          onClick={onToggleTreeNavigator}
+          style={{
+            background: isTreeNavigatorOpen
+              ? 'linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(99, 102, 241, 0.25))'
+              : 'rgba(56, 189, 248, 0.12)',
+            borderColor: '#38bdf8',
+            color: '#7dd3fc',
+            fontWeight: 600
+          }}
+          title="Toggle App Architecture Tree Navigator"
+        >
+          <FolderTree size={14} color="#38bdf8" />
+          <span>App Tree</span>
+        </button>
+
         <button className="btn-pill" onClick={onAutoLayout} title="Auto-align nodes by architectural layer">
           <LayoutGrid size={14} />
           <span>Auto Layout</span>
+        </button>
+
+        <button
+          className="btn-pill"
+          onClick={onRearrangeAndPack}
+          title="Auto-Space: Automatically rearrange overlapping nodes and optimize canvas space"
+        >
+          <Move size={13} color="#38bdf8" />
+          <span>Auto-Space</span>
         </button>
 
         <button
@@ -101,6 +159,23 @@ export default function Toolbar({
         >
           <Radio size={14} color="var(--color-service)" />
           <span style={{ color: 'var(--color-service)', fontWeight: 600 }}>Test Dataflow</span>
+        </button>
+
+        <button
+          className={`btn-pill ${isBottleneckLensActive ? 'active' : ''}`}
+          onClick={onToggleBottleneckLens}
+          style={{
+            background: isBottleneckLensActive
+              ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.3), rgba(239, 68, 68, 0.25))'
+              : 'rgba(245, 158, 11, 0.12)',
+            borderColor: '#f59e0b',
+            color: '#fbbf24',
+            fontWeight: 600
+          }}
+          title="Toggle Bottleneck Lens: Highlight state fanout re-render storms & critical path latency"
+        >
+          <AlertTriangle size={14} color="#f59e0b" />
+          <span>Bottlenecks ({bottleneckCount})</span>
         </button>
 
         {agentNodeCount > 0 && (

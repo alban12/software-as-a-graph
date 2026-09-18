@@ -33,12 +33,17 @@ function CustomNode({ id, data, selected }) {
   const hasRetainRisk = retainRisks.length > 0;
   const activePerf = (isSimActive || isSimError) ? data.activeStepPerf : null;
 
+  const hasBottlenecks = Boolean(data.isBottleneckLensActive && data.bottlenecks && data.bottlenecks.length > 0);
+  const primaryBottleneck = hasBottlenecks ? data.bottlenecks[0] : null;
+
   let simClasses = '';
   if (isSimActive) simClasses += ' sim-active';
   if (isSimError) simClasses += ' sim-error';
   if (isSimMutated) simClasses += ' sim-mutated';
   if (isSimDimmed) simClasses += ' sim-dimmed';
   if (isInAgentContext) simClasses += ' node-agent-selected';
+  if (hasBottlenecks) simClasses += ' node-bottleneck-pulse';
+  if (data.isBranchDimmed) simClasses += ' branch-dimmed';
 
   // Squeezed Pass-Through Capsule Rendering
   if (data.isSqueezed) {
@@ -137,13 +142,26 @@ function CustomNode({ id, data, selected }) {
           <div className="node-name" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <IconComponent size={14} />
             <span>{data.name}</span>
-            {hasRetainRisk && (
+            {hasRetainRisk && !hasBottlenecks && (
               <span
                 title={`${retainRisks[0]?.description}\n💡 Fix: ${retainRisks[0]?.suggestion}`}
                 style={{ color: '#f59e0b', fontSize: '12px', cursor: 'help' }}
               >
                 ⚠️
               </span>
+            )}
+            {hasBottlenecks && primaryBottleneck && (
+              <button
+                className="node-bottleneck-badge"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  data.onOpenBottleneckDrawer?.(primaryBottleneck);
+                }}
+                title={`Bottleneck Detected: ${primaryBottleneck.title}\n${primaryBottleneck.description}\nClick to open architectural reorganization remedy & Swift code diff`}
+              >
+                <AlertTriangle size={11} color="#fbbf24" />
+                <span>{primaryBottleneck.metricLabel}: {primaryBottleneck.metricValue}</span>
+              </button>
             )}
           </div>
         </div>

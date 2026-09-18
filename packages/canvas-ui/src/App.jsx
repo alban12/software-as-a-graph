@@ -23,6 +23,10 @@ import ServicePreviewModal from './components/ServicePreviewModal';
 import AgentScopeModal from './components/AgentScopeModal';
 import PerformanceProfilingModal from './components/PerformanceProfilingModal';
 import EdgeGuardrailToast from './components/EdgeGuardrailToast';
+import BottleneckDrawer from './components/BottleneckDrawer';
+import AppTreeNavigator from './components/AppTreeNavigator';
+import { analyzeBottlenecks } from './analysis/bottleneckEngine';
+import { decomposeAppTree, getNodeDimensions, rearrangeNodes, detectCollisions, computeAdaptiveTreeLayout } from './analysis/treeEngine';
 import { generateScopeContract } from './utils/scopeContract';
 import { validateEdgeConnection, inferEdgeContract } from './utils/edgeGuardrails';
 import { PRESET_SCENARIOS } from './simulation/engine';
@@ -56,6 +60,7 @@ export default function App() {
 
   // Multi-Scale Abstraction Level ('L1' | 'L2' | 'L3')
   const [abstractionLevel, setAbstractionLevel] = useState('L1');
+  const abstractionLevelRef = useRef('L1');
   const [expandedCompoundIds, setExpandedCompoundIds] = useState(new Set());
 
   const handleToggleCompound = useCallback((compoundId) => {
@@ -77,7 +82,66 @@ export default function App() {
 
   // Benchmark / Project Registry Switching
   const [projects, setProjects] = useState([]);
-  const [activeProjectId, setActiveProjectId] = useState('authsample');
+  const [activeProjectId, setActiveProjectId] = useState('landmarks');
+
+  // Bottleneck Diagnostic Engine & Architectural Reorganization
+  const [isBottleneckLensActive, setIsBottleneckLensActive] = useState(false);
+  const [isBottleneckDrawerOpen, setIsBottleneckDrawerOpen] = useState(false);
+  const [selectedBottleneck, setSelectedBottleneck] = useState(null);
+  const [appliedRefactorIds, setAppliedRefactorIds] = useState(new Set());
+
+  const bottleneckData = useMemo(() => {
+    return analyzeBottlenecks(rawGraph);
+  }, [rawGraph]);
+
+  const bottleneckNodeMap = useMemo(() => {
+    const map = {};
+    (bottleneckData.bottlenecks || []).forEach((b) => {
+      if (b.plan && appliedRefactorIds.has(b.plan.id)) return;
+      if (!map[b.nodeId]) map[b.nodeId] = [];
+      map[b.nodeId].push(b);
+    });
+    return map;
+  }, [bottleneckData, appliedRefactorIds]);
+
+  const handleToggleBottleneckLens = useCallback(() => {
+    setIsBottleneckLensActive((prev) => {
+      const next = !prev;
+      if (next) {
+        setIsBottleneckDrawerOpen(true);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleOpenBottlenecks = useCallback(() => {
+    setIsBottleneckDrawerOpen(true);
+  }, []);
+
+  // Layout Mode & Tab-as-a-Branch Tree View
+  const [layoutMode, setLayoutMode] = useState('tree'); // 'tree' | 'pipeline'
+  const [activeBranchId, setActiveBranchId] = useState('all');
+  const [isTreeNavigatorOpen, setIsTreeNavigatorOpen] = useState(false);
+  const reactFlowInstanceRef = useRef(null);
+
+  const treeData = useMemo(() => {
+    return decomposeAppTree(rawGraph);
+  }, [rawGraph]);
+
+  const handleSelectTreeNode = useCallback((nodeId) => {
+    const targetNode = nodes.find((n) => n.id === nodeId);
+    if (!targetNode) return;
+
+    setSelectedElement({ type: 'node', data: targetNode.data });
+
+    if (reactFlowInstanceRef.current) {
+      const pos = targetNode.position || { x: 0, y: 0 };
+      reactFlowInstanceRef.current.setCenter(pos.x + 160, pos.y + 120, {
+        zoom: 1.15,
+        duration: 600
+      });
+    }
+  }, [nodes]);
 
   const handleToggleAgentNode = useCallback((nodeId) => {
     setAgentNodeIds((prev) =>
@@ -90,8 +154,8 @@ export default function App() {
   }, []);
 
   const handleToggleSqueeze = useCallback((nodeId) => {
-    setNodes((nds) =>
-      nds.map((node) => {
+    setNodes((nds) => {
+      const updated = nds.map((node) => {
         if (node.id === nodeId) {
           const newSqueezed = !node.data.isSqueezed;
           return {
@@ -103,8 +167,23 @@ export default function App() {
           };
         }
         return node;
-      })
-    );
+      });
+
+      const currentPositions = {};
+      const nodeMap = {};
+      updated.forEach((n) => {
+        currentPositions[n.id] = n.position;
+        nodeMap[n.id] = n.data || n;
+      });
+      const { positions: rearranged } = rearrangeNodes(currentPositions, nodeMap, nodeId, {
+        paddingX: 40,
+        paddingY: 35
+      });
+      return updated.map((n) => ({
+        ...n,
+        position: rearranged[n.id] || n.position
+      }));
+    });
   }, [setNodes]);
 
   // Simulation step start
@@ -161,6 +240,107 @@ export default function App() {
     setZoomPreviewNode({ ...nodeData, onScreenAction: handleScreenAction });
   }, [handleScreenAction]);
 
+  // Handle 1-Click Interactive Canvas Graph Reorganization
+  const handleApplyGraphRefactor = useCallback((plan) => {
+    if (!plan || !plan.architecturalChanges) return;
+    const { newNodes, removeEdges, addEdges } = plan.architecturalChanges;
+
+    // 1. Add new nodes to React Flow nodes state
+    if (newNodes && newNodes.length > 0) {
+      setNodes((currentNodes) => {
+        const existingIds = new Set(currentNodes.map((n) => n.id));
+        const formattedNew = newNodes
+          .filter((n) => !existingIds.has(n.id))
+          .map((n) => ({
+            id: n.id,
+            type: 'saagNode',
+            position: n.canvasMeta?.position || { x: 450, y: 350 },
+            data: {
+              ...n,
+              onScreenAction: handleScreenAction,
+              onToggleSqueeze: handleToggleSqueeze,
+              onOpenServicePreview: handleOpenServicePreview,
+              onOpenPreviewModal: handleOpenPreviewModal
+            }
+          }));
+        return [...currentNodes, ...formattedNew];
+      });
+    }
+
+    // 2. Remove decoupled edges & add rewired edges
+    const removeSet = new Set(removeEdges || []);
+    setEdges((currentEdges) => {
+      const remaining = currentEdges.filter((e) => !removeSet.has(e.id));
+      const newRfEdges = (addEdges || []).map((edge) => ({
+        id: edge.id,
+        source: edge.sourceNodeId,
+        target: edge.targetNodeId,
+        sourceHandle: edge.sourcePortId,
+        targetHandle: edge.targetPortId,
+        animated: edge.executionMode === 'async',
+        style: {
+          stroke: edge.executionMode === 'async' ? '#38bdf8' : '#94a3b8',
+          strokeWidth: 2
+        },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: edge.executionMode === 'async' ? '#38bdf8' : '#94a3b8',
+        },
+        data: edge,
+        label: edge.contract?.payloadType ? edge.contract.payloadType.split('->').pop().trim() : undefined,
+      }));
+      return [...remaining, ...newRfEdges];
+    });
+
+    // 3. Update rawGraphRef and rawGraph so bottleneckEngine immediately recalculates
+    setRawGraph((prev) => {
+      if (!prev) return prev;
+      const updatedNodes = { ...prev.nodes };
+      const updatedEdges = { ...prev.edges };
+
+      (newNodes || []).forEach((n) => {
+        updatedNodes[n.id] = n;
+      });
+      (removeEdges || []).forEach((eid) => {
+        delete updatedEdges[eid];
+      });
+      (addEdges || []).forEach((e) => {
+        updatedEdges[e.id] = e;
+      });
+
+      const nextGraph = {
+        ...prev,
+        nodes: updatedNodes,
+        edges: updatedEdges
+      };
+      rawGraphRef.current = nextGraph;
+      return nextGraph;
+    });
+
+    setAppliedRefactorIds((prev) => new Set([...prev, plan.id]));
+  }, [setNodes, setEdges, handleScreenAction, handleToggleSqueeze, handleOpenServicePreview, handleOpenPreviewModal]);
+
+  // Handle Bi-Directional Code-Sync to .swift files on disk
+  const handleApplyCodebaseRefactor = useCallback(async (plan) => {
+    try {
+      const res = await fetch('/api/apply-refactor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to apply refactoring to codebase');
+      }
+
+      handleApplyGraphRefactor(plan);
+      return data;
+    } catch (err) {
+      console.error('Code refactoring error:', err);
+      throw err;
+    }
+  }, [handleApplyGraphRefactor]);
+
   // Selected nodes count
   const selectedNodeCount = useMemo(() => {
     return nodes.filter((n) => n.selected).length;
@@ -174,18 +354,43 @@ export default function App() {
     setRawGraph(saagGraph);
     setMetadata(saagGraph.metadata);
 
-    const rfNodes = Object.values(saagGraph.nodes).map((node) => ({
-      id: node.id,
-      type: 'saagNode',
-      position: node.canvasMeta?.position || { x: 100, y: 100 },
-      data: {
-        ...node,
-        onScreenAction: handleScreenAction,
-        onToggleSqueeze: handleToggleSqueeze,
-        onOpenServicePreview: handleOpenServicePreview,
-        onOpenPreviewModal: handleOpenPreviewModal
-      },
-    }));
+    const tree = decomposeAppTree(saagGraph);
+    const currentLevel = abstractionLevelRef.current || 'L1';
+
+    // Filter visible nodes based on active abstraction level
+    const rawNodes = saagGraph.nodes;
+    const initialVisible = Object.values(rawNodes).filter((n) => {
+      if (currentLevel === 'L1') {
+        return n.level === 'L1_SCREEN';
+      }
+      if (currentLevel === 'L2') {
+        return n.level !== 'L3_PRIMITIVE';
+      }
+      return true;
+    });
+
+    const adaptivePositions = computeAdaptiveTreeLayout(initialVisible, tree, saagGraph);
+    const fullTreePositions = tree?.treePositions || {};
+
+    const rfNodes = Object.values(saagGraph.nodes).map((node) => {
+      const computedPos = adaptivePositions[node.id] || fullTreePositions[node.id] || node.canvasMeta?.position || { x: 100, y: 100 };
+      return {
+        id: node.id,
+        type: 'saagNode',
+        position: computedPos,
+        data: {
+          ...node,
+          canvasMeta: {
+            ...node.canvasMeta,
+            position: computedPos
+          },
+          onScreenAction: handleScreenAction,
+          onToggleSqueeze: handleToggleSqueeze,
+          onOpenServicePreview: handleOpenServicePreview,
+          onOpenPreviewModal: handleOpenPreviewModal
+        },
+      };
+    });
 
     const rfEdges = Object.values(saagGraph.edges || {}).map((edge) => ({
       id: edge.id,
@@ -205,6 +410,12 @@ export default function App() {
 
     setNodes(rfNodes);
     setEdges(rfEdges);
+
+    if (reactFlowInstanceRef.current) {
+      setTimeout(() => {
+        reactFlowInstanceRef.current?.fitView({ padding: 0.25, duration: 400 });
+      }, 100);
+    }
   }, [setNodes, setEdges, handleScreenAction, handleToggleSqueeze, handleOpenServicePreview, handleOpenPreviewModal]);
 
   // Keep transformRef pointing to latest transform function
@@ -350,21 +561,37 @@ export default function App() {
     });
 
     if (!simulation || !currentStep) {
-      return visibleNodes.map((n) => ({
-        ...n,
-        data: {
-          ...n.data,
-          agentNodeIds,
-          onToggleAgentNode: handleToggleAgentNode,
-          activeScope,
-          isExpanded: isExpandedMap.get(n.id) || false,
-          onToggleCompound: handleToggleCompound,
-          onScreenAction: handleScreenAction,
-          onToggleSqueeze: handleToggleSqueeze,
-          onOpenServicePreview: handleOpenServicePreview,
-          onOpenPreviewModal: handleOpenPreviewModal
-        }
-      }));
+      return visibleNodes.map((n) => {
+        const isNodeInActiveBranch =
+          activeBranchId === 'all' ||
+          treeData?.branchMap?.[n.id] === activeBranchId ||
+          treeData?.rootAppNode?.id === n.id ||
+          treeData?.containerNode?.id === n.id ||
+          Boolean(treeData?.stateShelfNodes?.some((s) => s.id === n.id));
+
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            agentNodeIds,
+            onToggleAgentNode: handleToggleAgentNode,
+            activeScope,
+            isExpanded: isExpandedMap.get(n.id) || false,
+            onToggleCompound: handleToggleCompound,
+            isBottleneckLensActive,
+            bottlenecks: bottleneckNodeMap[n.id] || [],
+            onOpenBottleneckDrawer: (b) => {
+              setSelectedBottleneck(b);
+              setIsBottleneckDrawerOpen(true);
+            },
+            isBranchDimmed: !isNodeInActiveBranch,
+            onScreenAction: handleScreenAction,
+            onToggleSqueeze: handleToggleSqueeze,
+            onOpenServicePreview: handleOpenServicePreview,
+            onOpenPreviewModal: handleOpenPreviewModal
+          }
+        };
+      });
     }
 
     const visitedNodes = new Set();
@@ -398,6 +625,13 @@ export default function App() {
       else if (isActive) status = 'active';
       else if (isVisited) status = 'active';
 
+      const isNodeInActiveBranch =
+        activeBranchId === 'all' ||
+        treeData?.branchMap?.[n.id] === activeBranchId ||
+        treeData?.rootAppNode?.id === n.id ||
+        treeData?.containerNode?.id === n.id ||
+        Boolean(treeData?.stateShelfNodes?.some((s) => s.id === n.id));
+
       return {
         ...n,
         data: {
@@ -407,6 +641,13 @@ export default function App() {
           activeScope,
           isExpanded: isExpandedMap.get(n.id) || false,
           onToggleCompound: handleToggleCompound,
+          isBottleneckLensActive,
+          bottlenecks: bottleneckNodeMap[n.id] || [],
+          onOpenBottleneckDrawer: (b) => {
+            setSelectedBottleneck(b);
+            setIsBottleneckDrawerOpen(true);
+          },
+          isBranchDimmed: !isNodeInActiveBranch,
           simulationStatus: status,
           activeMutations: nodeMutations,
           activeStepPerf,
@@ -427,6 +668,10 @@ export default function App() {
     currentStepIndex,
     agentNodeIds,
     activeScope,
+    isBottleneckLensActive,
+    bottleneckNodeMap,
+    activeBranchId,
+    treeData,
     handleToggleCompound,
     handleToggleAgentNode,
     handleScreenAction,
@@ -482,7 +727,67 @@ export default function App() {
       });
     });
 
-    if (!simulation || !currentStep) return reroutedEdges;
+    if (!simulation || !currentStep) {
+      return reroutedEdges.map((e) => {
+        const latency = e.data?.perfMeta?.averageLatencyMs || 0;
+        const isCritical = isBottleneckLensActive && (latency >= 200 || e.data?.perfMeta?.isCriticalPath);
+        if (isCritical) {
+          return {
+            ...e,
+            animated: true,
+            style: { stroke: '#f43f5e', strokeWidth: 3 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: '#f43f5e' },
+            label: `⚠️ Latency: ${latency}ms`
+          };
+        }
+
+        // Tree View Specific Edge Styling
+        if (layoutMode === 'tree') {
+          const isStateBinding =
+            e.data?.edgeKind === 'stateBinding' ||
+            e.data?.contract?.payloadType?.includes('State') ||
+            e.source === 'node_modeldata' ||
+            e.target === 'node_modeldata';
+
+          // If branch isolation is active, dim edges outside this branch
+          if (activeBranchId !== 'all') {
+            const edgeInBranch =
+              treeData?.branchMap?.[e.source] === activeBranchId ||
+              treeData?.branchMap?.[e.target] === activeBranchId;
+            if (!edgeInBranch && !isStateBinding) {
+              return {
+                ...e,
+                animated: false,
+                style: { stroke: 'rgba(255, 255, 255, 0.05)', strokeWidth: 1 }
+              };
+            }
+          }
+
+          // Subtle state bindings in Tree View so they don't clutter navigation swimlanes
+          if (isStateBinding) {
+            const isSelected =
+              selectedElement?.data?.id === e.id ||
+              selectedElement?.data?.id === e.source ||
+              selectedElement?.data?.id === e.target;
+            return {
+              ...e,
+              animated: false,
+              style: {
+                stroke: isSelected ? '#f59e0b' : 'rgba(245, 158, 11, 0.22)',
+                strokeWidth: isSelected ? 2 : 1,
+                strokeDasharray: '4 4'
+              },
+              markerEnd: {
+                type: MarkerType.ArrowClosed,
+                color: isSelected ? '#f59e0b' : 'rgba(245, 158, 11, 0.25)'
+              }
+            };
+          }
+        }
+
+        return e;
+      });
+    }
 
     const activeEdgeId = currentStep.activeEdgeId;
     const visitedEdges = new Set();
@@ -545,7 +850,18 @@ export default function App() {
         };
       }
     });
-  }, [edges, displayNodes, simulation, currentStep, currentStepIndex]);
+  }, [
+    edges,
+    displayNodes,
+    simulation,
+    currentStep,
+    currentStepIndex,
+    layoutMode,
+    activeBranchId,
+    treeData,
+    selectedElement,
+    isBottleneckLensActive
+  ]);
 
   // Validate edge connection in real time against architectural guardrails
   const isValidConnection = useCallback(
@@ -777,16 +1093,87 @@ export default function App() {
     setSelectedElement(rfNode);
   }, [setNodes]);
 
-  // Auto Layout: Sequential Pipeline Architecture & Hierarchical SwiftUI View Layers
+  // Handle Multi-Scale Abstraction Level Change with Zero-Void Adaptive Packing
+  const handleLevelChange = useCallback((newLevel) => {
+    setAbstractionLevel(newLevel);
+    abstractionLevelRef.current = newLevel;
+
+    const rawNodes = rawGraphRef.current?.nodes || {};
+    const visibleUnderNewLevel = nodes.filter((n) => {
+      const nodeLevel = n.data?.level || rawNodes[n.id]?.level || 'L1_SCREEN';
+      const parentId = n.data?.parentId || rawNodes[n.id]?.parentId;
+
+      if (newLevel === 'L1') {
+        if (parentId) return expandedCompoundIds.has(parentId);
+        return nodeLevel === 'L1_SCREEN';
+      }
+      if (newLevel === 'L2') {
+        if (nodeLevel === 'L3_PRIMITIVE') return false;
+        return true;
+      }
+      return true;
+    });
+
+    if (layoutMode === 'tree' && treeData) {
+      const adaptivePositions = computeAdaptiveTreeLayout(visibleUnderNewLevel, treeData, rawGraphRef.current);
+      setNodes((nds) =>
+        nds.map((node) => {
+          const pos = adaptivePositions[node.id] || treeData.treePositions?.[node.id] || node.position;
+          return {
+            ...node,
+            position: pos,
+            data: {
+              ...node.data,
+              canvasMeta: {
+                ...node.data?.canvasMeta,
+                position: pos,
+              }
+            }
+          };
+        })
+      );
+    }
+
+    if (reactFlowInstanceRef.current) {
+      setTimeout(() => {
+        reactFlowInstanceRef.current?.fitView({ padding: 0.25, duration: 450 });
+      }, 50);
+    }
+  }, [nodes, treeData, layoutMode, expandedCompoundIds, setNodes]);
+
+  // Auto Layout: Tree View (Tab Branches) & Sequential Pipeline Modes with Dynamic Spacing & Overlap Elimination
   const handleAutoLayout = useCallback(() => {
-    // Sequential Pipeline Stages:
-    // Stage 0 (x: 60): App Roots & Navigation Containers (e.g. LandmarksApp, ContentView)
-    // Stage 1 (x: 440): Primary Top-Level Screens (e.g. CategoryHome, LandmarkList, LoginView, RemindersListView)
-    // Stage 2 (x: 840): ViewModels & Detail/Sheet Screens (e.g. ModelData, LandmarkDetail, ProfileHost, ReminderDetailsView, BiometricApprovalView)
-    // Stage 3 (x: 1240): Rows, Sub-Screens & Component Sections (e.g. CategoryRow, LandmarkRow, ProfileSummary, HikeView)
-    // Stage 4 (x: 1640): Leaf Subviews & Domain Services (e.g. MapView, CircleImage, FavoriteButton, LiveAuthService)
-    // Stage 5 (x: 2040): Graphic Primitives & Repositories (e.g. BadgeBackground, BadgeSymbol, KeychainStorage)
-    // Stage 6 (x: 2440): Test Suites & Verification (e.g. LandmarksTests, AuthSampleTests)
+    // 1. Tab-as-a-Branch Tree Layout
+    if (layoutMode === 'tree' && treeData) {
+      const adaptivePositions = computeAdaptiveTreeLayout(displayNodes, treeData, rawGraphRef.current);
+      const fullTreePositions = treeData.treePositions || {};
+
+      setNodes((nds) =>
+        nds.map((node) => {
+          const pos = adaptivePositions[node.id] || fullTreePositions[node.id] || node.position;
+          return {
+            ...node,
+            position: pos,
+            data: {
+              ...node.data,
+              canvasMeta: {
+                ...node.data?.canvasMeta,
+                position: pos,
+              }
+            }
+          };
+        })
+      );
+
+      if (reactFlowInstanceRef.current) {
+        setTimeout(() => {
+          reactFlowInstanceRef.current?.fitView({ padding: 0.25, duration: 450 });
+        }, 50);
+      }
+      return;
+    }
+
+    // 2. Sequential Pipeline Stages:
     const stageByNodeId = {};
     nodes.forEach((node) => {
       const name = node.data?.name || '';
@@ -833,7 +1220,6 @@ export default function App() {
     };
 
     const rawNodes = rawGraphRef.current?.nodes || {};
-    // Separate top-level / screen nodes from nested child subviews
     const topLevelNodes = nodes
       .filter((n) => !(n.data?.parentId || rawNodes[n.id]?.parentId))
       .sort((a, b) => {
@@ -853,7 +1239,8 @@ export default function App() {
       const x = xByStage[stage] ?? 840;
       const y = yByStage[stage] ?? 120;
       newPositions[node.id] = { x, y };
-      yByStage[stage] = y + 290;
+      const dim = getNodeDimensions(node);
+      yByStage[stage] = y + dim.height + 50; // Dynamic height allocation!
     });
 
     // Group child subviews by parentId and position them adjacent to the compound screen container
@@ -866,19 +1253,30 @@ export default function App() {
 
     Object.entries(childrenByParent).forEach(([pId, children]) => {
       const parentPos = newPositions[pId] || { x: 840, y: 120 };
+      const parentDim = getNodeDimensions(nodes.find((n) => n.id === pId) || {});
       children.forEach((child, idx) => {
         const col = idx % 2;
         const row = Math.floor(idx / 2);
+        const childDim = getNodeDimensions(child);
         newPositions[child.id] = {
-          x: parentPos.x + 360 + col * 340,
-          y: parentPos.y + 40 + row * 250
+          x: parentPos.x + parentDim.width + 50 + col * (childDim.width + 30),
+          y: parentPos.y + row * (childDim.height + 30)
         };
       });
     });
 
+    // Run dynamic collision resolution to guarantee 100% zero overlap
+    const nodeMap = {};
+    nodes.forEach((n) => { nodeMap[n.id] = n.data || n; });
+    const { positions: resolvedPositions } = rearrangeNodes(newPositions, nodeMap, null, {
+      paddingX: 45,
+      paddingY: 40,
+      maxIterations: 25
+    });
+
     setNodes((nds) =>
       nds.map((node) => {
-        const pos = newPositions[node.id] || node.position;
+        const pos = resolvedPositions[node.id] || newPositions[node.id] || node.position;
         return {
           ...node,
           position: pos,
@@ -890,6 +1288,84 @@ export default function App() {
             }
           }
         };
+      })
+    );
+  }, [nodes, setNodes, layoutMode, treeData]);
+
+  // Dynamic Live Rearrangement: when dragging a node, push overlapping neighbors aside
+  const handleNodeDragStop = useCallback((event, movedNode) => {
+    if (!movedNode) return;
+    const currentPositions = {};
+    const nodeMap = {};
+    nodes.forEach((n) => {
+      currentPositions[n.id] = n.id === movedNode.id ? movedNode.position : n.position;
+      nodeMap[n.id] = n.data || n;
+    });
+
+    const collisions = detectCollisions(currentPositions, nodeMap, 30, 30);
+    const isMovedColliding = collisions.some((c) => c.idA === movedNode.id || c.idB === movedNode.id);
+
+    if (isMovedColliding) {
+      const { positions: rearranged } = rearrangeNodes(currentPositions, nodeMap, movedNode.id, {
+        paddingX: 45,
+        paddingY: 40,
+        maxIterations: 25
+      });
+
+      setNodes((nds) =>
+        nds.map((n) => {
+          const newPos = rearranged[n.id];
+          if (newPos && (newPos.x !== n.position.x || newPos.y !== n.position.y)) {
+            return {
+              ...n,
+              position: newPos,
+              data: {
+                ...n.data,
+                canvasMeta: {
+                  ...n.data?.canvasMeta,
+                  position: newPos
+                }
+              }
+            };
+          }
+          return n;
+        })
+      );
+    }
+  }, [nodes, setNodes]);
+
+  // Manual Trigger: Auto-Space & Pack Canvas
+  const handleRearrangeAndPack = useCallback(() => {
+    const currentPositions = {};
+    const nodeMap = {};
+    nodes.forEach((n) => {
+      currentPositions[n.id] = n.position;
+      nodeMap[n.id] = n.data || n;
+    });
+
+    const { positions: rearranged } = rearrangeNodes(currentPositions, nodeMap, null, {
+      paddingX: 50,
+      paddingY: 45,
+      maxIterations: 35
+    });
+
+    setNodes((nds) =>
+      nds.map((n) => {
+        const newPos = rearranged[n.id];
+        if (newPos) {
+          return {
+            ...n,
+            position: newPos,
+            data: {
+              ...n.data,
+              canvasMeta: {
+                ...n.data?.canvasMeta,
+                position: newPos
+              }
+            }
+          };
+        }
+        return n;
       })
     );
   }, [nodes, setNodes]);
@@ -956,6 +1432,7 @@ export default function App() {
         nodeCount={nodes.length}
         edgeCount={edges.length}
         onAutoLayout={handleAutoLayout}
+        onRearrangeAndPack={handleRearrangeAndPack}
         onSave={handleSave}
         onOpenSimulation={() => setIsSimModalOpen(true)}
         isSaving={isSaving}
@@ -967,17 +1444,86 @@ export default function App() {
         activeProjectId={activeProjectId}
         onSwitchProject={handleSwitchProject}
         abstractionLevel={abstractionLevel}
-        onLevelChange={setAbstractionLevel}
+        onLevelChange={handleLevelChange}
         visibleNodeCount={displayNodes.length}
         totalNodeCount={nodes.length}
+        bottleneckCount={bottleneckData.bottlenecks?.length || 0}
+        isBottleneckLensActive={isBottleneckLensActive}
+        onToggleBottleneckLens={handleToggleBottleneckLens}
+        onOpenBottlenecks={handleOpenBottlenecks}
+        layoutMode={layoutMode}
+        onLayoutModeChange={(mode) => {
+          setLayoutMode(mode);
+          if (mode === 'tree' && treeData) {
+            const adaptivePositions = computeAdaptiveTreeLayout(displayNodes, treeData, rawGraphRef.current);
+            setNodes((nds) =>
+              nds.map((node) => {
+                const pos = adaptivePositions[node.id] || treeData.treePositions?.[node.id] || node.position;
+                return {
+                  ...node,
+                  position: pos,
+                  data: {
+                    ...node.data,
+                    canvasMeta: {
+                      ...node.data?.canvasMeta,
+                      position: pos,
+                    }
+                  }
+                };
+              })
+            );
+            if (reactFlowInstanceRef.current) {
+              setTimeout(() => {
+                reactFlowInstanceRef.current?.fitView({ padding: 0.25, duration: 450 });
+              }, 50);
+            }
+          }
+        }}
+        branches={treeData?.branches || []}
+        activeBranchId={activeBranchId}
+        onSelectBranch={setActiveBranchId}
+        isTreeNavigatorOpen={isTreeNavigatorOpen}
+        onToggleTreeNavigator={() => setIsTreeNavigatorOpen((prev) => !prev)}
       />
 
+      {/* Floating Canvas Tab / Branch Switcher Filter Bar */}
+      {layoutMode === 'tree' && treeData?.branches?.length > 0 && (
+        <div className="canvas-tab-floating-bar glass-panel">
+          <button
+            className={`tab-pill ${activeBranchId === 'all' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveBranchId('all');
+              setTimeout(() => reactFlowInstanceRef.current?.fitView({ padding: 0.25, duration: 350 }), 50);
+            }}
+          >
+            <span className="tab-pill-icon">🌐</span>
+            <span>All Tabs ({treeData.branches.reduce((acc, b) => acc + b.nodes.length, 0)})</span>
+          </button>
+          {treeData.branches.map((b) => (
+            <button
+              key={b.id}
+              className={`tab-pill ${activeBranchId === b.id ? 'active' : ''}`}
+              onClick={() => {
+                setActiveBranchId(b.id);
+                setTimeout(() => reactFlowInstanceRef.current?.fitView({ padding: 0.25, duration: 350 }), 50);
+              }}
+            >
+              <span className="tab-pill-icon">{b.icon || '📱'}</span>
+              <span>{b.title}</span>
+              <span className="tab-pill-count">{b.nodes.length}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       <ReactFlow
+        onInit={(instance) => { reactFlowInstanceRef.current = instance; }}
         nodes={displayNodes}
         edges={displayEdges}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onNodeDragStop={handleNodeDragStop}
         onConnect={onConnect}
         onReconnect={onReconnect}
         isValidConnection={isValidConnection}
@@ -1084,6 +1630,25 @@ export default function App() {
         scope={activeScope}
         initialTab={scopeModalTab}
         onUnlock={handleClearAgentContext}
+      />
+
+      <BottleneckDrawer
+        isOpen={isBottleneckDrawerOpen}
+        onClose={() => setIsBottleneckDrawerOpen(false)}
+        bottleneckData={bottleneckData}
+        onApplyGraphRefactor={handleApplyGraphRefactor}
+        onApplyCodebaseRefactor={handleApplyCodebaseRefactor}
+        appliedRefactors={appliedRefactorIds}
+      />
+
+      <AppTreeNavigator
+        isOpen={isTreeNavigatorOpen}
+        onClose={() => setIsTreeNavigatorOpen(false)}
+        treeData={treeData}
+        selectedNodeId={selectedElement?.data?.id}
+        onSelectNode={handleSelectTreeNode}
+        activeBranchId={activeBranchId}
+        onSelectBranch={setActiveBranchId}
       />
     </div>
   );

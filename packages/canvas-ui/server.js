@@ -16,24 +16,27 @@ const KNOWN_PROJECTS = [
     id: 'authsample',
     name: 'AuthSample (SwiftUI + Firebase)',
     path: path.resolve(__dirname, '../../examples/ios-auth-sample/.saag/graph.json'),
+    sourceDir: path.resolve(__dirname, '../../examples/ios-auth-sample'),
     description: 'Clean Architecture MVVM sample with Firebase & Keychain'
   },
   {
     id: 'makeitso',
     name: 'MakeItSo (Firebase Tasks App)',
     path: path.resolve(__dirname, '../../benchmarks/makeitso-graph.json'),
+    sourceDir: path.resolve(__dirname, '../../benchmarks/MakeItSo'),
     description: 'Full-featured Firebase Auth & Firestore CRUD by Peter Friese'
   },
   {
     id: 'landmarks',
     name: 'Landmarks (Apple Official Sample)',
     path: path.resolve(__dirname, '../../benchmarks/landmarks-graph.json'),
+    sourceDir: path.resolve(__dirname, '../../benchmarks/Landmarks'),
     description: "Apple's flagship multi-screen SwiftUI tutorial application"
   }
 ];
 
-let activeProjectId = 'authsample';
-let graphPath = KNOWN_PROJECTS[0].path;
+let activeProjectId = 'landmarks';
+let graphPath = KNOWN_PROJECTS[2].path;
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--graph' && args[i + 1]) {
@@ -150,6 +153,78 @@ app.post('/api/save-test', (req, res) => {
     res.json({ success: true, path: targetPath });
   } catch (err) {
     console.error('Error writing test:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// REST: Apply Architectural Refactoring & Sync Swift Codebase
+app.post('/api/apply-refactor', (req, res) => {
+  try {
+    const { plan } = req.body;
+    if (!plan) return res.status(400).json({ error: 'Missing refactoring plan' });
+
+    const currentProject = KNOWN_PROJECTS.find((p) => p.id === activeProjectId);
+    const sourceDir = currentProject?.sourceDir || path.dirname(graphPath);
+
+    const writtenFiles = [];
+    if (plan.swiftChanges && Array.isArray(plan.swiftChanges)) {
+      for (const change of plan.swiftChanges) {
+        if (!change.filePath || !change.code) continue;
+
+        let targetFilePath = path.resolve(sourceDir, change.filePath);
+        fs.mkdirSync(path.dirname(targetFilePath), { recursive: true });
+        fs.writeFileSync(targetFilePath, change.code, 'utf8');
+        console.log(`📝 Refactor wrote ${change.action}: ${targetFilePath}`);
+        writtenFiles.push({
+          filePath: change.filePath,
+          fullPath: targetFilePath,
+          action: change.action
+        });
+      }
+    }
+
+    // Update graph on disk if architectural changes are specified
+    let updatedGraph = null;
+    if (fs.existsSync(graphPath)) {
+      try {
+        const raw = fs.readFileSync(graphPath, 'utf8');
+        updatedGraph = JSON.parse(raw);
+
+        if (plan.architecturalChanges) {
+          const { newNodes, removeEdges, addEdges } = plan.architecturalChanges;
+          if (newNodes && Array.isArray(newNodes)) {
+            newNodes.forEach((node) => {
+              updatedGraph.nodes[node.id] = node;
+            });
+          }
+          if (removeEdges && Array.isArray(removeEdges)) {
+            removeEdges.forEach((edgeId) => {
+              delete updatedGraph.edges[edgeId];
+            });
+          }
+          if (addEdges && Array.isArray(addEdges)) {
+            addEdges.forEach((edge) => {
+              updatedGraph.edges[edge.id] = edge;
+            });
+          }
+
+          fs.writeFileSync(graphPath, JSON.stringify(updatedGraph, null, 2), 'utf8');
+          console.log(`💾 Refactor updated graph architecture in ${graphPath}`);
+          broadcastGraph(updatedGraph);
+        }
+      } catch (graphErr) {
+        console.warn('Could not update graph JSON directly:', graphErr.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      planId: plan.id,
+      writtenFiles,
+      updatedGraph
+    });
+  } catch (err) {
+    console.error('Error applying refactor:', err);
     res.status(500).json({ error: err.message });
   }
 });
