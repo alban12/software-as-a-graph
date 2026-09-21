@@ -15,6 +15,7 @@ const KNOWN_PROJECTS = [
   {
     id: 'authsample',
     name: 'AuthSample (SwiftUI + Firebase)',
+    projectType: 'ios',
     path: path.resolve(__dirname, '../../examples/ios-auth-sample/.saag/graph.json'),
     sourceDir: path.resolve(__dirname, '../../examples/ios-auth-sample'),
     description: 'Clean Architecture MVVM sample with Firebase & Keychain'
@@ -22,6 +23,7 @@ const KNOWN_PROJECTS = [
   {
     id: 'makeitso',
     name: 'MakeItSo (Firebase Tasks App)',
+    projectType: 'ios',
     path: path.resolve(__dirname, '../../benchmarks/makeitso-graph.json'),
     sourceDir: path.resolve(__dirname, '../../benchmarks/MakeItSo'),
     description: 'Full-featured Firebase Auth & Firestore CRUD by Peter Friese'
@@ -29,9 +31,26 @@ const KNOWN_PROJECTS = [
   {
     id: 'landmarks',
     name: 'Landmarks (Apple Official Sample)',
+    projectType: 'ios',
     path: path.resolve(__dirname, '../../benchmarks/landmarks-graph.json'),
     sourceDir: path.resolve(__dirname, '../../benchmarks/Landmarks'),
     description: "Apple's flagship multi-screen SwiftUI tutorial application"
+  },
+  {
+    id: 'agent_orchestrator',
+    name: 'Agent Orchestrator (Multi-Agent System)',
+    projectType: 'agents',
+    path: path.resolve(__dirname, '../../benchmarks/agent-orchestrator-graph.json'),
+    sourceDir: path.resolve(__dirname, '../../benchmarks/Agents'),
+    description: 'Autonomous multi-agent coordinator with code writer and human-in-the-loop gate'
+  },
+  {
+    id: 'ml_pipeline',
+    name: 'Llama-3 Fine-Tuning & H100 GPU Cluster',
+    projectType: 'ml',
+    path: path.resolve(__dirname, '../../benchmarks/ml-pipeline-graph.json'),
+    sourceDir: path.resolve(__dirname, '../../benchmarks/ML'),
+    description: 'PyTorch + cuDF + LoRA model creation pipeline targeting 8x NVIDIA H100 with NVLink'
   }
 ];
 
@@ -69,11 +88,47 @@ app.get('/api/projects', (req, res) => {
   const projects = KNOWN_PROJECTS.map((p) => ({
     id: p.id,
     name: p.name,
+    projectType: p.projectType || 'ios',
     description: p.description,
     exists: fs.existsSync(p.path),
     isActive: p.id === activeProjectId
   }));
   res.json({ activeProjectId, projects });
+});
+
+// REST: Resolve Cross-Project Reference (saag://<projectType>/<projectId>/<nodeId>)
+app.get('/api/projects/resolve-ref', (req, res) => {
+  try {
+    const { uri } = req.query;
+    if (!uri || !uri.startsWith('saag://')) {
+      return res.status(400).json({ error: 'Invalid URI format, expected saag://<projectType>/<projectId>/<nodeId>' });
+    }
+    const cleanUri = uri.replace('saag://', '');
+    const parts = cleanUri.split('/');
+    if (parts.length < 3) {
+      return res.status(400).json({ error: 'Malformed saag URI' });
+    }
+    const [targetType, targetProjectId, targetNodeId] = parts;
+    const project = KNOWN_PROJECTS.find((p) => p.id === targetProjectId);
+    if (!project || !fs.existsSync(project.path)) {
+      return res.status(404).json({ error: 'Target project not found' });
+    }
+    const graph = JSON.parse(fs.readFileSync(project.path, 'utf8'));
+    const targetNode = graph.nodes?.[targetNodeId];
+    if (!targetNode) {
+      return res.status(404).json({ error: 'Target node not found in project' });
+    }
+    res.json({
+      success: true,
+      uri,
+      targetType,
+      targetProjectId,
+      targetProjectName: project.name,
+      node: targetNode
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // REST: Switch Active Project

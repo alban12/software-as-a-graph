@@ -1,14 +1,35 @@
 import React, { memo, useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Layers, ChevronDown, ChevronRight, Code2, Database, Globe, Cpu, Smartphone, Flame, Minimize2, Maximize2, ExternalLink, Lock, Bot, AlertTriangle, Zap } from 'lucide-react';
+import {
+  Layers, ChevronDown, ChevronRight, Code2, Database, Globe, Cpu,
+  Smartphone, Flame, Minimize2, Maximize2, ExternalLink, Lock, Bot,
+  AlertTriangle, Zap, Server, Activity, Rocket, Wrench, GitFork,
+  ShieldCheck, Brain
+} from 'lucide-react';
 import ScreenPreview from './ScreenPreview';
 import FirebaseLogo from './FirebaseLogo';
+import { parseSaagUri } from '../utils/crossReferences';
 
 const KIND_ICONS = {
+  // iOS / Native Client
   view: Globe,
   viewModel: Layers,
   service: Cpu,
   repository: Database,
+  // Multi-Agent System
+  agent: Bot,
+  tool: Wrench,
+  router: GitFork,
+  gate: ShieldCheck,
+  // Distributed ML & Hardware
+  dataset: Database,
+  preprocessor: Cpu,
+  model: Brain,
+  adapter: Layers,
+  optimizer: Zap,
+  hardware: Server,
+  interconnect: Activity,
+  exporter: Rocket,
 };
 
 function CustomNode({ id, data, selected }) {
@@ -135,7 +156,7 @@ function CustomNode({ id, data, selected }) {
             <span className="node-kind-badge">{data.kind}</span>
             {data.level && (
               <span className={`node-level-badge level-${(data.level || '').toLowerCase()}`}>
-                {data.level === 'L1_SCREEN' ? 'L1 Screen' : data.level === 'L2_COMPONENT' ? 'L2 Subview' : 'L3 Primitive'}
+                {data.level === 'L1_SCREEN' ? 'L1 Screen' : data.level === 'L1_SYSTEM' ? 'L1 System' : data.level === 'L2_COMPONENT' ? 'L2 Component' : data.level === 'L3_EXECUTION' ? 'L3 Execution' : 'L3 Primitive'}
               </span>
             )}
           </div>
@@ -296,6 +317,154 @@ function CustomNode({ id, data, selected }) {
               )}
             </div>
           )}
+
+          {/* Universal Cross-Project Linkages */}
+          {data.crossReferences && data.crossReferences.length > 0 && (
+            <div className="node-cross-refs-section">
+              <div className="cross-refs-header">
+                <span>Cross-Project Links</span>
+              </div>
+              <div className="cross-refs-pills">
+                {data.crossReferences.map((ref, idx) => {
+                  const parsed = parseSaagUri(ref.targetUri);
+                  return (
+                    <button
+                      key={idx}
+                      className="cross-ref-pill"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        data.onNavigateCrossReference?.(ref.targetUri);
+                      }}
+                      title={`Jump to: ${ref.targetUri}\nRelationship: ${ref.relationship || 'links_to'}\nContract: ${ref.contract || 'None'}`}
+                    >
+                      <span className="cross-ref-icon">{parsed?.icon || '🔗'}</span>
+                      <span className="cross-ref-label">{ref.label || parsed?.typeLabel || 'Link'}</span>
+                      <ExternalLink size={10} className="cross-ref-arrow" />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Dedicated Hardware Specification Card */}
+          {Boolean(data.hardwareMeta) && (
+            <div className="node-hardware-card">
+              <div className="hardware-card-top">
+                <div className="hardware-gpu-badge">
+                  <Server size={14} color="#34d399" />
+                  <span className="hardware-gpu-title">{data.hardwareMeta.gpuModel || 'GPU Server'}</span>
+                </div>
+                <span className="hardware-count-tag">{data.hardwareMeta.gpuCount || 1}x SXM5</span>
+              </div>
+              <div className="hardware-specs-row">
+                <span className="hw-chip">⚡ {data.hardwareMeta.vramPerGpuGb}GB / GPU</span>
+                <span className="hw-chip">🌐 {data.hardwareMeta.interconnectType}</span>
+                <span className="hw-chip">{data.hardwareMeta.computeCapability || 'SM 9.0'}</span>
+              </div>
+              <div className="vram-meter-box">
+                <div className="vram-meter-labels">
+                  <span>Cluster VRAM Pool</span>
+                  <strong>{(data.hardwareMeta.vramPerGpuGb || 80) * (data.hardwareMeta.gpuCount || 1)} GB HBM3</strong>
+                </div>
+                <div className="vram-meter-track">
+                  <div className="vram-meter-bar" style={{ width: '25%' }} />
+                </div>
+                <div className="vram-meter-sub">
+                  <span>Weights: ~16.1 GB</span>
+                  <span>Bus: {data.hardwareMeta.memoryBandwidthTbSec || 3.35} TB/s</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Dedicated ML Model Architecture Card */}
+          {data.kind === 'model' && Boolean(data.mlMeta) && (
+            <div className="node-model-card">
+              <div className="model-header-specs">
+                <span className="model-param-badge">🧠 {data.mlMeta.paramCount || '8B'}</span>
+                <span className="model-precision-badge">{data.mlMeta.precision || 'BF16'}</span>
+                <span className="model-context-badge">{(data.mlMeta.contextWindow || 8192).toLocaleString()} ctx</span>
+              </div>
+              <div className="model-framework-row">
+                <span>{data.mlMeta.framework || 'PyTorch 2.4 + CuDNN 9.1'}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Dedicated GPU Acceleration / Preprocessor Card */}
+          {data.kind === 'preprocessor' && Boolean(data.mlMeta) && (
+            <div className="node-preprocessor-card">
+              <div className="preprocessor-badge-row">
+                <span className="cudf-glow-badge">⚡ {data.mlMeta.framework || 'cuDF GPU Acceleration'}</span>
+              </div>
+              <div className="preprocessor-throughput-sub">
+                <span>Batch: {data.mlMeta.batchSize || 128}</span>
+                <span>Throughput: ~1.4 GB/s</span>
+              </div>
+            </div>
+          )}
+
+          {/* Dedicated PEFT Adapter Card */}
+          {data.kind === 'adapter' && Boolean(data.mlMeta) && (
+            <div className="node-adapter-card">
+              <div className="adapter-badge-row">
+                <span className="adapter-rank-badge">LoRA Rank: r={data.mlMeta.loraRank || 16}</span>
+                <span className="adapter-alpha-badge">α={data.mlMeta.loraAlpha || 32}</span>
+              </div>
+              <div className="adapter-sub">
+                Target: {data.mlMeta.targetModules?.join(', ') || 'q_proj, v_proj'}
+              </div>
+            </div>
+          )}
+
+          {/* Dedicated Optimizer Card */}
+          {data.kind === 'optimizer' && Boolean(data.mlMeta) && (
+            <div className="node-optimizer-card">
+              <div className="optimizer-badge-row">
+                <span className="opt-algo-badge">⚡ {data.mlMeta.optimizerType || 'AdamW-8Bit'}</span>
+                <span className="opt-zero-badge">ZeRO-{data.mlMeta.zeroStage ?? 3}</span>
+              </div>
+              <div className="optimizer-sub">
+                <span>lr: {data.mlMeta.learningRate || '2e-5'}</span>
+                {data.mlMeta.gradientCheckpointing && <span className="chkpt-badge">✓ Grad Checkpointing</span>}
+              </div>
+            </div>
+          )}
+
+          {/* Dedicated Autonomous Agent Card */}
+          {data.kind === 'agent' && Boolean(data.agentMeta) && (
+            <div className="node-agent-card">
+              <div className="agent-role-badge">
+                <Bot size={13} color="#c084fc" />
+                <span>{data.agentMeta.role || 'Agent'}</span>
+              </div>
+              {data.agentMeta.authorizedTools && data.agentMeta.authorizedTools.length > 0 && (
+                <div className="agent-tools-row">
+                  <span className="agent-tools-label">Tools:</span>
+                  <div className="agent-tools-chips">
+                    {data.agentMeta.authorizedTools.map((t, idx) => (
+                      <span key={idx} className="agent-tool-chip">🛠 {t.replace(/^node_/, '')}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Dedicated Gate / Approval Checkpoint Card */}
+          {data.kind === 'gate' && Boolean(data.gateMeta) && (
+            <div className="node-gate-card">
+              <div className="gate-badge-row">
+                <ShieldCheck size={13} color="#ff9f0a" />
+                <span>Human Approval Gate</span>
+              </div>
+              <div className="gate-role-row">
+                Required: <strong>{data.gateMeta.requiredRole || 'Reviewer'}</strong>
+              </div>
+            </div>
+          )}
+
           {/* Embedded SwiftUI Screen Preview (for View nodes) */}
           {isViewNode && showScreenPreview && (
             <div className="node-preview-wrapper" onClick={(e) => { e.stopPropagation(); data.onOpenPreviewModal?.(data); }}>

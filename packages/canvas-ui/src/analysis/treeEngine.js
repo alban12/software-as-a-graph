@@ -8,6 +8,77 @@
  * 
  * Elevates shared state stores (@Observable, Services) to an isolated State Shelf
 /**
+ * System Design Node Filter:
+ * Abstracts away low-level implementation details that an LLM can take care of
+ * (e.g. test harness runner suites, drawing/vector math helpers, SwiftUI environment keys/glue,
+ * and leaf micro-widgets) so the canvas represents high-level system architecture.
+ */
+export function isSystemDesignNode(node) {
+  const data = node?.data || node || {};
+
+  // All Agent and ML system architecture nodes are first-class system design nodes
+  const nonIosKinds = [
+    'agent', 'tool', 'router', 'gate',
+    'dataset', 'preprocessor', 'model', 'adapter', 'optimizer', 'hardware', 'interconnect', 'exporter'
+  ];
+  if (nonIosKinds.includes(data.kind)) {
+    return true;
+  }
+
+  const name = data.name || '';
+  const lower = name.toLowerCase();
+
+  // 1. Exclude test runners and test suites (e.g. LandmarksTests, AuthSampleTests, XCTest suites)
+  if (
+    lower.includes('test') ||
+    lower.includes('launchtests') ||
+    lower.includes('xctest')
+  ) {
+    return false;
+  }
+
+  // 2. Exclude trivial drawing math / vector shapes / path helpers
+  const drawingHelpers = [
+    'badgebackground',
+    'badgesymbol',
+    'rotatedbadgesymbol',
+    'hexagonparameters',
+    'coordinates',
+    'graphcapsule',
+    'textoverlay',
+    'segment'
+  ];
+  if (drawingHelpers.includes(lower)) {
+    return false;
+  }
+
+  // 3. Exclude SwiftUI environment keys, commands, and observation glue
+  if (
+    lower.endsWith('key') ||
+    lower.endsWith('keys') ||
+    lower.endsWith('commands') ||
+    lower === 'observation'
+  ) {
+    return false;
+  }
+
+  // 4. Exclude micro-primitives (leaf atomic icons/buttons/controls)
+  const microPrimitives = [
+    'circleimage',
+    'favoritebutton',
+    'pagecontrol',
+    'categoryitem',
+    'hikebadge',
+    'hikegraph'
+  ];
+  if (microPrimitives.includes(lower)) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
  * Node Dimension Calculator:
  * Accounts for whether the node is a view with an interactive preview,
  * a squeezed pass-through capsule, a compound expanded group, or a data store/service.
@@ -31,6 +102,15 @@ export function getNodeDimensions(node) {
     const subviewCount = (data.childNodeIds || []).length;
     const subviewHeight = (data.isCompound && !data.isExpanded && subviewCount > 0) ? 55 : 0;
     return { width: 310, height: 480 + extraPropHeight + subviewHeight };
+  }
+  if (data.kind === 'hardware') {
+    return { width: 330, height: 250 };
+  }
+  if (data.kind === 'model') {
+    return { width: 290, height: Math.max(220, 140 + portCount * 28) };
+  }
+  if (data.kind === 'agent') {
+    return { width: 280, height: Math.max(200, 130 + portCount * 28) };
   }
   if (data.serviceMeta) {
     return { width: 280, height: 210 };
@@ -170,9 +250,21 @@ export function decomposeAppTree(graph) {
     };
   }
 
-  const nodes = graph.nodes;
+  const rawNodes = graph.nodes;
   const edges = Object.values(graph.edges || {});
-  const nodeIds = Object.keys(nodes);
+  
+  // Filter for system design nodes (abstract away what an LLM handles)
+  const nodes = {};
+  for (const id in rawNodes) {
+    if (isSystemDesignNode(rawNodes[id])) {
+      nodes[id] = rawNodes[id];
+    }
+  }
+  let nodeIds = Object.keys(nodes);
+  if (nodeIds.length === 0) {
+    Object.assign(nodes, rawNodes);
+    nodeIds = Object.keys(nodes);
+  }
 
   // 1. Separate App Root, UI Nodes, and Shared Stores / Cloud Services
   const stateShelfNodes = [];
@@ -206,9 +298,6 @@ export function decomposeAppTree(graph) {
       node.name.includes('ModelData') ||
       node.name.includes('Service') ||
       node.name.includes('Repository') ||
-      node.name.includes('Test') ||
-      node.name === 'Coordinates' ||
-      node.name === 'HexagonParameters' ||
       node.name === 'Profile' ||
       node.name === 'Hike' ||
       node.name === 'Landmark' ||
@@ -231,7 +320,7 @@ export function decomposeAppTree(graph) {
       }
     });
     const candidateRoots = Object.keys(uiNodes).filter((id) => inDegreeMap[id] === 0);
-    rootAppNode = candidateRoots.length > 0 ? uiNodes[candidateRoots[0]] : Object.values(uiNodes)[0];
+    rootAppNode = candidateRoots.length > 0 ? uiNodes[candidateRoots[0]] : Object.values(uiNodes)[0] || Object.values(nodes)[0];
   }
 
   // 2. Identify Root Navigation Container (e.g. ContentView / MainView)
@@ -261,16 +350,26 @@ export function decomposeAppTree(graph) {
     containerNode = rootAppNode;
   }
 
+  // Ensure rootAppNode and containerNode are never placed on the state shelf
+  const shelfIndex = stateShelfNodes.findIndex((s) => s.id === containerNode?.id);
+  if (shelfIndex >= 0) {
+    stateShelfNodes.splice(shelfIndex, 1);
+    uiNodes[containerNode.id] = containerNode;
+  }
+  const rootShelfIndex = stateShelfNodes.findIndex((s) => s.id === rootAppNode?.id);
+  if (rootShelfIndex >= 0) {
+    stateShelfNodes.splice(rootShelfIndex, 1);
+    uiNodes[rootAppNode.id] = rootAppNode;
+  }
+
   // 4. Discover Tab Branches & Primary Navigation Roots
   // Scan outgoing composition / navigation edges from the Container
   const branchSeeds = [];
   const edgesFromContainer = edges.filter((e) => e.sourceNodeId === containerNode?.id && uiNodes[e.targetNodeId]);
 
-  // Specific heuristic for Landmarks and known apps:
-  // Tab 1: CategoryHome ("Featured"), Tab 2: LandmarkList ("List"), Tab 3 / Modal: ProfileHost
   edgesFromContainer.forEach((e) => {
     const targetNode = uiNodes[e.targetNodeId];
-    if (targetNode && targetNode.id !== rootAppNode?.id) {
+    if (targetNode && targetNode.id !== rootAppNode?.id && targetNode.id !== containerNode?.id) {
       branchSeeds.push(targetNode);
     }
   });
@@ -417,43 +516,19 @@ export function decomposeAppTree(graph) {
     });
   }
 
-  // 6. Calculate Clean Tree View Positions (Compact Shelf & Collision-Free Swimlanes)
+  // 6. Top-to-Bottom Tree View Positions
   const treePositions = {};
 
-  // Separate Primary State Stores (@Observable / Store) from Secondary Models/Services/Tests
-  const primaryStores = stateShelfNodes.filter(
-    (n) => n.name.includes('ModelData') || n.name.includes('Store') || n.kind === 'viewModel'
-  );
-  const secondaryServices = stateShelfNodes.filter((n) => !primaryStores.includes(n));
+  const rootDim = rootAppNode ? getNodeDimensions(rootAppNode) : { width: 280, height: 180 };
+  const rootY = 40;
+  const containerDim = containerNode ? getNodeDimensions(containerNode) : { width: 310, height: 480 };
+  const containerY = rootY + rootDim.height + 60;
+  const branchStartY = (containerNode && containerNode.id !== rootAppNode?.id)
+    ? containerY + containerDim.height + 80
+    : rootY + rootDim.height + 80;
 
-  // Place Primary Stores in a dedicated tier right above the container
-  const shelfStartX = 400;
-  primaryStores.forEach((node, idx) => {
-    treePositions[node.id] = {
-      x: shelfStartX + idx * 330,
-      y: -220
-    };
-  });
-
-  // Place Secondary Services / Models / Tests in a compact 4-column rack
-  const rackCols = 4;
-  const colHeights = [0, 0, 0, 0];
-  const shelfBaseY = -280;
-
-  secondaryServices.forEach((node, idx) => {
-    const col = idx % rackCols;
-    const dim = getNodeDimensions(node);
-    const y = shelfBaseY - colHeights[col] - dim.height;
-    treePositions[node.id] = {
-      x: shelfStartX + col * 330,
-      y: y
-    };
-    colHeights[col] += dim.height + 40; // 40px vertical gap between rack items
-  });
-
-  // Position Branch Swimlanes with Dynamic Column Widths & Heights (Zero Overlaps)
-  let currentBranchY = 60;
-  const branchStartX = 800;
+  // Position Branch Swimlanes side-by-side horizontally, cascading downward vertically
+  let currentBranchX = 60;
 
   branches.forEach((branch) => {
     // Group branch nodes by depth
@@ -465,48 +540,63 @@ export function decomposeAppTree(graph) {
     });
 
     const depths = Object.keys(byDepth).map(Number).sort((a, b) => a - b);
-    let branchMaxY = currentBranchY;
-    let colX = branchStartX;
+    let colX = currentBranchX;
 
     depths.forEach((d) => {
       const items = byDepth[d];
-      let currentY = currentBranchY;
+      let currentY = branchStartY;
       let maxColWidth = 0;
 
-      items.forEach((item) => {
-        const dim = getNodeDimensions(item);
-        treePositions[item.id] = { x: colX, y: currentY };
+      items.forEach((itemNode) => {
+        const dim = getNodeDimensions(itemNode);
+        treePositions[itemNode.id] = { x: colX, y: currentY };
         currentY += dim.height + 60; // 60px vertical gap between screens
         maxColWidth = Math.max(maxColWidth, dim.width);
       });
 
-      branchMaxY = Math.max(branchMaxY, currentY);
       colX += maxColWidth + 85; // 85px horizontal gap between depth columns
     });
 
-    // Advance Y channel for next branch swimlane
-    currentBranchY = branchMaxY + 110; // 110px swimlane separation
+    currentBranchX = colX + 40; // 40px gap between branches
   });
 
-  // Position Root App and Container vertically centered with the primary tab roots
-  let centerY = 320;
-  if (branches.length >= 2 && branches[0].nodes[0] && branches[1].nodes[0]) {
-    const y0 = treePositions[branches[0].nodes[0].node.id]?.y ?? 60;
-    const y1 = treePositions[branches[1].nodes[0].node.id]?.y ?? 600;
-    centerY = Math.round((y0 + y1) / 2);
-  } else if (branches.length === 1 && branches[0].nodes[0]) {
-    centerY = treePositions[branches[0].nodes[0].node.id]?.y ?? 320;
+  const totalBranchesWidth = Math.max(currentBranchX - 60, 600);
+  const treeCenterX = 60 + totalBranchesWidth / 2;
+
+  // Tier 0: Root App at Top Center
+  if (rootAppNode) {
+    const rootX = Math.round(treeCenterX - rootDim.width / 2);
+    treePositions[rootAppNode.id] = { x: Math.max(60, rootX), y: rootY };
   }
 
-  if (rootAppNode) {
-    treePositions[rootAppNode.id] = { x: 40, y: centerY };
-  }
+  // Tier 1: Container directly beneath Root App
   if (containerNode && containerNode.id !== rootAppNode?.id) {
-    treePositions[containerNode.id] = { x: 400, y: centerY };
+    const containerX = Math.round(treeCenterX - containerDim.width / 2);
+    treePositions[containerNode.id] = { x: Math.max(60, containerX), y: containerY };
   }
+
+  // Lateral State Shelf: Shared Stores & Services to the right of branch columns & root/container
+  const maxCenterRight = treeCenterX + Math.max(rootDim.width, containerDim.width) / 2;
+  const shelfStartX = Math.max(currentBranchX + 60, maxCenterRight + 80);
+  const shelfStartY = containerY;
+
+  const shelfCols = stateShelfNodes.length > 5 ? 2 : 1;
+  const colHeights = new Array(shelfCols).fill(0);
+  const shelfColWidth = 300;
+
+  stateShelfNodes.forEach((node, idx) => {
+    const col = idx % shelfCols;
+    const dim = getNodeDimensions(node);
+    const x = shelfStartX + col * (shelfColWidth + 40);
+    const y = shelfStartY + colHeights[col];
+    treePositions[node.id] = { x, y };
+    colHeights[col] += dim.height + 40;
+  });
 
   // Final relaxation check to guarantee zero overlaps across any edge cases
-  const relaxed = rearrangeNodes(treePositions, nodes, null, { paddingX: 40, paddingY: 40, maxIterations: 15 });
+  const nodeMap = {};
+  for (const id in nodes) nodeMap[id] = nodes[id];
+  const relaxed = rearrangeNodes(treePositions, nodeMap, null, { paddingX: 20, paddingY: 20, maxIterations: 15 });
   Object.assign(treePositions, relaxed.positions);
 
   // 7. Build Nested Hierarchy Model for Sidebar Tree Explorer
@@ -618,19 +708,16 @@ export function computeAdaptiveTreeLayout(visibleNodeList, treeData, rawGraph) {
   const { rootAppNode, containerNode, branches = [], stateShelfNodes = [] } = treeData;
   const positions = {};
 
-  // 1. Position Visible State Stores on Top Shelf
-  const visibleStores = stateShelfNodes.filter((n) => visibleMap.has(n.id));
-  const shelfStartX = 380;
-  visibleStores.forEach((node, idx) => {
-    positions[node.id] = {
-      x: shelfStartX + idx * 320,
-      y: -220
-    };
-  });
+  const rootDim = rootAppNode ? getNodeDimensions(rootAppNode) : { width: 280, height: 180 };
+  const rootY = 40;
+  const containerDim = containerNode ? getNodeDimensions(containerNode) : { width: 310, height: 480 };
+  const containerY = rootY + rootDim.height + 60;
+  const branchStartY = (containerNode && containerNode.id !== rootAppNode?.id)
+    ? containerY + containerDim.height + 80
+    : rootY + rootDim.height + 80;
 
-  // 2. Position Visible Branches
-  let currentBranchY = 60;
-  const branchStartX = 800;
+  // 1. Position Visible Branches side-by-side horizontally, cascading downward vertically
+  let currentBranchX = 60;
 
   branches.forEach((branch) => {
     const visibleBranchItems = branch.nodes.filter((item) => visibleMap.has(item.id));
@@ -645,12 +732,11 @@ export function computeAdaptiveTreeLayout(visibleNodeList, treeData, rawGraph) {
     });
 
     const depths = Object.keys(byDepth).map(Number).sort((a, b) => a - b);
-    let branchMaxY = currentBranchY;
-    let colX = branchStartX;
+    let colX = currentBranchX;
 
     depths.forEach((d) => {
       const items = byDepth[d];
-      let currentY = currentBranchY;
+      let currentY = branchStartY;
       let maxColWidth = 0;
 
       items.forEach((node) => {
@@ -660,36 +746,63 @@ export function computeAdaptiveTreeLayout(visibleNodeList, treeData, rawGraph) {
         maxColWidth = Math.max(maxColWidth, dim.width);
       });
 
-      branchMaxY = Math.max(branchMaxY, currentY);
       colX += maxColWidth + 85;
     });
 
-    currentBranchY = branchMaxY + 110;
+    currentBranchX = colX + 40;
   });
 
-  // 3. Center Root App and Container vertically between visible branches
-  let centerY = 320;
-  const branchRoots = branches
-    .map((b) => b.nodes.find((n) => visibleMap.has(n.id))?.node)
-    .filter(Boolean);
+  const totalBranchesWidth = Math.max(currentBranchX - 60, 600);
+  const treeCenterX = 60 + totalBranchesWidth / 2;
 
-  if (branchRoots.length >= 2 && positions[branchRoots[0].id] && positions[branchRoots[1].id]) {
-    centerY = Math.round((positions[branchRoots[0].id].y + positions[branchRoots[1].id].y) / 2);
-  } else if (branchRoots.length === 1 && positions[branchRoots[0].id]) {
-    centerY = positions[branchRoots[0].id].y;
-  }
-
+  // 2. Position Root App at the Top Center (Tier 0)
   if (rootAppNode && visibleMap.has(rootAppNode.id)) {
-    positions[rootAppNode.id] = { x: 40, y: centerY };
+    const rootX = Math.round(treeCenterX - rootDim.width / 2);
+    positions[rootAppNode.id] = { x: Math.max(60, rootX), y: rootY };
   }
+
+  // 3. Position Container directly beneath Root App (Tier 1)
   if (containerNode && visibleMap.has(containerNode.id) && containerNode.id !== rootAppNode?.id) {
-    positions[containerNode.id] = { x: 380, y: centerY };
+    const containerX = Math.round(treeCenterX - containerDim.width / 2);
+    positions[containerNode.id] = { x: Math.max(60, containerX), y: containerY };
+  }
+
+  // 4. Position State Shelf to the right of branch columns & root/container
+  const visibleStores = stateShelfNodes.filter((n) => visibleMap.has(n.id));
+  const maxCenterRight = treeCenterX + Math.max(rootDim.width, containerDim.width) / 2;
+  const shelfStartX = Math.max(currentBranchX + 60, maxCenterRight + 80);
+  const shelfStartY = containerY;
+
+  const shelfCols = visibleStores.length > 5 ? 2 : 1;
+  const colHeights = new Array(shelfCols).fill(0);
+  const shelfColWidth = 300;
+
+  visibleStores.forEach((node, idx) => {
+    const col = idx % shelfCols;
+    const dim = getNodeDimensions(node);
+    const x = shelfStartX + col * (shelfColWidth + 40);
+    const y = shelfStartY + colHeights[col];
+    positions[node.id] = { x, y };
+    colHeights[col] += dim.height + 40;
+  });
+
+  // 5. Catch any unplaced visible nodes safely
+  const placedIds = new Set(Object.keys(positions));
+  const unplaced = visibleNodeList.filter(n => !placedIds.has(n.id) && n.id !== rootAppNode?.id && n.id !== containerNode?.id);
+  if (unplaced.length > 0) {
+    let unplacedY = branchStartY;
+    const unplacedX = shelfStartX + shelfCols * (shelfColWidth + 40) + 40;
+    unplaced.forEach(node => {
+      const dim = getNodeDimensions(node);
+      positions[node.id] = { x: unplacedX, y: unplacedY };
+      unplacedY += dim.height + 40;
+    });
   }
 
   // Final relaxation check
   const nodeMap = {};
   visibleNodeList.forEach((n) => { nodeMap[n.id] = n.data || n; });
-  const relaxed = rearrangeNodes(positions, nodeMap, null, { paddingX: 40, paddingY: 40, maxIterations: 15 });
+  const relaxed = rearrangeNodes(positions, nodeMap, null, { paddingX: 20, paddingY: 20, maxIterations: 15 });
   return relaxed.positions;
 }
 

@@ -14,9 +14,14 @@
       "required": ["projectName", "targetPlatform", "rootPath", "lastSynchronizedAt"],
       "properties": {
         "projectName": { "type": "string" },
+        "projectType": {
+          "type": "string",
+          "enum": ["ios", "agents", "ml"],
+          "default": "ios"
+        },
         "targetPlatform": {
           "type": "string",
-          "enum": ["swift", "typescript", "python", "generic"]
+          "enum": ["swift", "typescript", "python", "generic", "cuda"]
         },
         "rootPath": { "type": "string" },
         "lastSynchronizedAt": { "type": "string" },
@@ -61,8 +66,39 @@
             "function",
             "handler",
             "stateHolder",
-            "decisionBranch"
+            "decisionBranch",
+            "agent",
+            "tool",
+            "router",
+            "gate",
+            "dataset",
+            "preprocessor",
+            "model",
+            "adapter",
+            "optimizer",
+            "hardware",
+            "interconnect",
+            "exporter"
           ]
+        },
+        "crossReferences": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["targetUri"],
+            "properties": {
+              "targetUri": { "type": "string" },
+              "relationship": { "type": "string" },
+              "label": { "type": "string" },
+              "contract": { "type": "string" }
+            }
+          }
+        },
+        "mlMeta": {
+          "type": "object"
+        },
+        "hardwareMeta": {
+          "type": "object"
         },
         "parentId": { "type": "string" },
         "inputs": {

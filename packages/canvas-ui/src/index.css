@@ -1,46 +1,53 @@
-/* SaaG Design System — Modern Architectural Dark Mode */
+/* SaaG Design System — Apple Human Interface Guidelines (HIG) & macOS Native Standards */
 @import '@xyflow/react/dist/style.css';
 
 :root {
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  /* Apple Typography Stack */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "SF Pro", -system-ui, sans-serif;
+  --font-mono: "SF Mono", Menlo, Monaco, Consolas, monospace;
 
-  /* Theme Backgrounds */
-  --bg-canvas: #090d16;
-  --bg-panel: rgba(15, 23, 42, 0.85);
-  --bg-card: #0f172a;
-  --bg-card-hover: #1e293b;
-  --bg-subtle: rgba(255, 255, 255, 0.04);
+  /* macOS Sonoma / Sequoia Dark Material Hierarchy */
+  --bg-canvas: #161618;
+  --bg-panel: rgba(32, 32, 36, 0.78);
+  --bg-panel-elevated: rgba(40, 40, 44, 0.88);
+  --bg-card: rgba(32, 32, 36, 0.82);
+  --bg-card-hover: rgba(44, 44, 50, 0.95);
+  --bg-subtle: rgba(255, 255, 255, 0.05);
+  --bg-input: rgba(0, 0, 0, 0.35);
 
-  /* Borders */
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-active: rgba(255, 255, 255, 0.2);
+  /* Apple Hairline Borders & Specular Highlights */
+  --border-subtle: rgba(255, 255, 255, 0.09);
+  --border-active: rgba(255, 255, 255, 0.22);
+  --border-highlight: rgba(255, 255, 255, 0.16);
+  --specular-top: inset 0 1px 0 0 rgba(255, 255, 255, 0.12);
 
-  /* Typography */
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  /* Apple HIG Typography Hierarchy */
+  --text-primary: rgba(255, 255, 255, 0.94);
+  --text-secondary: rgba(235, 235, 245, 0.64);
+  --text-muted: rgba(235, 235, 245, 0.38);
 
-  /* Architectural Accents */
-  --color-view: #a855f7;
-  --color-view-bg: rgba(168, 85, 247, 0.12);
-  --color-view-border: rgba(168, 85, 247, 0.35);
+  /* Apple System Accent Colors (SF Palette) */
+  --color-view: #bf5af2;
+  --color-view-bg: rgba(191, 90, 242, 0.14);
+  --color-view-border: rgba(191, 90, 242, 0.38);
 
-  --color-viewmodel: #3b82f6;
-  --color-viewmodel-bg: rgba(59, 130, 246, 0.12);
-  --color-viewmodel-border: rgba(59, 130, 246, 0.35);
+  --color-viewmodel: #0a84ff;
+  --color-viewmodel-bg: rgba(10, 132, 255, 0.14);
+  --color-viewmodel-border: rgba(10, 132, 255, 0.38);
 
-  --color-service: #10b981;
-  --color-service-bg: rgba(16, 185, 129, 0.12);
-  --color-service-border: rgba(16, 185, 129, 0.35);
+  --color-service: #30d158;
+  --color-service-bg: rgba(48, 209, 88, 0.14);
+  --color-service-border: rgba(48, 209, 88, 0.38);
 
-  --color-repository: #f59e0b;
-  --color-repository-bg: rgba(245, 158, 11, 0.12);
-  --color-repository-border: rgba(245, 158, 11, 0.35);
+  --color-repository: #ff9f0a;
+  --color-repository-bg: rgba(255, 159, 10, 0.14);
+  --color-repository-border: rgba(255, 159, 10, 0.38);
 
-  --color-accent: #38bdf8;
-  --color-danger: #ef4444;
-  --color-success: #22c55e;
+  --color-accent: #0a84ff;
+  --color-danger: #ff453a;
+  --color-success: #30d158;
+  --color-warning: #ffd60a;
+  --color-teal: #40c8e0;
 }
 
 * {
@@ -57,39 +64,691 @@ html, body, #root {
   color: var(--text-primary);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.012em;
 }
 
-/* Glassmorphism Classes */
+/* macOS Frosted Glass Panel */
 .glass-panel {
   background: var(--bg-panel);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(28px) saturate(190%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
   border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
+  border-radius: 14px;
+  box-shadow: var(--specular-top), 0 12px 32px 0 rgba(0, 0, 0, 0.45);
 }
 
-/* App Container */
+/* App Container Shell */
+.saag-app-layout {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: var(--bg-canvas);
+  position: relative;
+}
+
 .saag-app {
   display: flex;
   flex-direction: column;
   width: 100vw;
   height: 100vh;
   position: relative;
+  background-color: var(--bg-canvas);
 }
 
-/* Top Toolbar */
-.saag-toolbar {
-  height: 56px;
+.saag-main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-width: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.saag-canvas-wrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  flex: 1;
+}
+
+/* ==========================================================================
+   Left Navigation Sidebar — Apple HIG & Linear/Xcode 16 Studio Standard
+   ========================================================================== */
+.saag-left-sidebar {
+  width: 258px;
+  min-width: 258px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  backdrop-filter: blur(32px) saturate(190%);
+  -webkit-backdrop-filter: blur(32px) saturate(190%);
+  border-right: 1px solid var(--border-subtle);
+  border-left: none;
+  border-top: none;
+  border-bottom: none;
+  border-radius: 0;
+  z-index: 60;
+  user-select: none;
+  transition: width 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              min-width 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.2s ease;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.28);
+}
+
+/* Sidebar Brand Header */
+.sidebar-brand-header {
+  height: 54px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.sidebar-title-box {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.sidebar-app-badge {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: linear-gradient(135deg, #0a84ff 0%, #5e5ce6 100%);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 2px 6px rgba(10, 132, 255, 0.32);
+}
+
+.sidebar-app-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-app-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.sidebar-app-subtitle {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+}
+
+.sidebar-collapse-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.sidebar-collapse-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-subtle);
+}
+
+/* Scrollable Section Content */
+.sidebar-scrollable-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.sidebar-scrollable-content::-webkit-scrollbar {
+  width: 5px;
+}
+
+.sidebar-scrollable-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+}
+
+.sidebar-scrollable-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Section Containers */
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebar-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.section-badge {
+  font-size: 9.5px;
+  font-weight: 500;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  padding: 1px 6px;
+  border-radius: 10px;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* Domain Groups */
+.sidebar-domain-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  padding: 6px;
+}
+
+.domain-header-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.domain-group-icon {
+  font-size: 13px;
+}
+
+.domain-projects-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-project-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.14s ease;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: var(--font-sans);
+}
+
+.sidebar-project-item:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+}
+
+.sidebar-project-item.active {
+  background: rgba(10, 132, 255, 0.14);
+  border-color: rgba(10, 132, 255, 0.32);
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.sidebar-project-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.project-item-lead {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-status-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  flex-shrink: 0;
+}
+
+.project-status-indicator.active {
+  background: #0a84ff;
+  box-shadow: 0 0 6px rgba(10, 132, 255, 0.7);
+}
+
+.project-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-active-tag {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: #0a84ff;
+  background: rgba(10, 132, 255, 0.18);
+  border-radius: 4px;
+  padding: 1px 5px;
+  flex-shrink: 0;
+}
+
+/* ML Hardware Constraint Status Pill */
+.sidebar-ml-status-pill {
+  margin-top: 4px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.sidebar-ml-status-pill.status-safe {
+  background: rgba(48, 209, 88, 0.1);
+  border-color: rgba(48, 209, 88, 0.25);
+  color: #30d158;
+}
+
+.sidebar-ml-status-pill.status-safe:hover {
+  background: rgba(48, 209, 88, 0.16);
+}
+
+.sidebar-ml-status-pill.status-oom_error {
+  background: rgba(255, 69, 58, 0.14);
+  border-color: rgba(255, 69, 58, 0.35);
+  color: #ff453a;
+}
+
+.sidebar-ml-status-pill.status-oom_error:hover {
+  background: rgba(255, 69, 58, 0.22);
+}
+
+.sidebar-ml-status-pill.status-warning {
+  background: rgba(255, 159, 10, 0.12);
+  border-color: rgba(255, 159, 10, 0.3);
+  color: #ff9f0a;
+}
+
+.ml-status-lead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ml-status-text {
+  font-weight: 500;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ml-status-inspect {
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+/* Studio Tools Grid */
+.sidebar-tools-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar-tool-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 9px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sidebar-tool-row:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.sidebar-tool-row.active {
+  background: rgba(10, 132, 255, 0.14);
+  border-color: rgba(10, 132, 255, 0.35);
+}
+
+.sidebar-tool-row.bottleneck-btn.active {
+  background: rgba(255, 159, 10, 0.14);
+  border-color: rgba(255, 159, 10, 0.35);
+}
+
+.sidebar-tool-row.agent-btn.active {
+  background: rgba(191, 90, 242, 0.14);
+  border-color: rgba(191, 90, 242, 0.35);
+}
+
+.tool-row-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.tool-shortcut-tag {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.tool-status-pill {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 9999px;
+}
+
+.tool-status-pill.green {
+  color: #30d158;
+  background: rgba(48, 209, 88, 0.16);
+  border: 1px solid rgba(48, 209, 88, 0.3);
+}
+
+.tool-count-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 9999px;
+}
+
+.tool-count-badge.orange {
+  color: #ff9f0a;
+  background: rgba(255, 159, 10, 0.18);
+  border: 1px solid rgba(255, 159, 10, 0.35);
+}
+
+.tool-count-badge.purple {
+  color: #bf5af2;
+  background: rgba(191, 90, 242, 0.18);
+  border: 1px solid rgba(191, 90, 242, 0.35);
+}
+
+.tool-count-badge.gray {
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+}
+
+/* Canvas Actions */
+.sidebar-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.sidebar-action-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sidebar-action-pill:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+/* Sidebar Footer */
+.sidebar-footer {
+  padding: 12px 14px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  background: rgba(22, 22, 24, 0.6);
+  flex-shrink: 0;
+}
+
+.footer-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sync-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shortcut-hint {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.sidebar-save-btn {
+  width: 100%;
+  justify-content: center;
+  padding: 8px 12px;
+  font-size: 12px;
+  gap: 7px;
+  border-radius: 8px;
+}
+
+/* Toolbar Modern Additions */
+.sidebar-toggle-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.sidebar-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.sidebar-toggle-btn.highlight {
+  background: rgba(10, 132, 255, 0.15);
+  border-color: rgba(10, 132, 255, 0.35);
+  color: #0a84ff;
+}
+
+.toolbar-project-tag {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 260px;
+}
+
+.project-domain-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.project-title-text {
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.project-domain-badge {
+  font-size: 9.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Top Toolbar: macOS Native Window Header — Uncluttered 3-Zone Layout */
+.saag-toolbar {
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
   position: absolute;
-  top: 14px;
+  top: 12px;
   left: 14px;
   right: 14px;
   z-index: 50;
+  border-radius: 12px;
+  gap: 16px;
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.toolbar-center {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-shrink: 0;
+}
+
+.toolbar-stats-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  white-space: nowrap;
+}
+
+.stats-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #30d158;
+}
+
+.stats-separator {
+  color: var(--text-muted);
+}
+
+.toolbar-add-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.toolbar-add-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.toolbar-quick-save {
+  padding: 5px 12px;
+  font-size: 12px;
+  gap: 6px;
 }
 
 .toolbar-brand {
@@ -98,123 +757,171 @@ html, body, #root {
   gap: 12px;
 }
 
+/* macOS Window Traffic Lights */
+.mac-window-controls {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-right: 4px;
+}
+
+.mac-dot {
+  width: 11.5px;
+  height: 11.5px;
+  border-radius: 50%;
+  position: relative;
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.3);
+  transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+.mac-dot.close { background: #FF5F56; }
+.mac-dot.minimize { background: #FFBD2E; }
+.mac-dot.maximize { background: #27C93F; }
+
+.mac-window-controls:hover .mac-dot {
+  filter: brightness(1.08);
+}
+
 .brand-badge {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #0284c7, #6366f1);
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: linear-gradient(145deg, #0a84ff, #5e5ce6);
   color: white;
-  font-weight: 800;
-  font-size: 14px;
-  box-shadow: 0 0 16px rgba(56, 189, 248, 0.4);
+  font-weight: 700;
+  font-size: 13px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 2px 6px rgba(10, 132, 255, 0.35);
 }
 
 .brand-title {
-  font-weight: 700;
-  font-size: 15px;
-  letter-spacing: -0.01em;
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: -0.015em;
   color: var(--text-primary);
 }
 
 .brand-project {
   font-size: 12px;
-  padding: 2px 8px;
+  padding: 3px 9px;
   border-radius: 6px;
   background: var(--bg-subtle);
   color: var(--text-secondary);
   border: 1px solid var(--border-subtle);
+  font-weight: 500;
 }
 
+/* Xcode Scheme Picker Selector */
 .project-selector-wrapper {
   display: flex;
   align-items: center;
+  position: relative;
 }
 
 .project-dropdown {
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   color: var(--text-primary);
   padding: 4px 10px;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
+  font-family: var(--font-sans);
   outline: none;
   cursor: pointer;
-  transition: all 0.2s ease;
-  backdrop-filter: blur(8px);
+  transition: all 0.15s ease;
+  backdrop-filter: blur(12px);
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 24px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .project-dropdown:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(56, 189, 248, 0.4);
+  background: rgba(255, 255, 255, 0.13);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .project-dropdown:focus {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.3);
 }
 
 .project-dropdown option {
-  background: #0f172a;
-  color: #f1f5f9;
+  background: #1e1e22;
+  color: #ffffff;
   font-size: 13px;
-  padding: 6px;
+  padding: 6px 10px;
+}
+
+.project-selector-chevron {
+  position: absolute;
+  right: 8px;
+  pointer-events: none;
+  color: var(--text-muted);
 }
 
 .toolbar-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
+/* Apple HIG Pill & Prominent Buttons */
 .btn-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 14px;
+  padding: 5px 12px;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
+  font-family: var(--font-sans);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
   border: 1px solid var(--border-subtle);
-  background: rgba(30, 41, 59, 0.7);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
 }
 
 .btn-pill:hover {
-  background: rgba(51, 65, 85, 0.9);
+  background: rgba(255, 255, 255, 0.13);
   border-color: var(--border-active);
-  transform: translateY(-1px);
+  transform: translateY(-0.5px);
+}
+
+.btn-pill:active {
+  transform: scale(0.98);
 }
 
 .btn-pill.primary {
-  background: linear-gradient(135deg, #2563eb, #7c3aed);
-  border-color: transparent;
-  color: white;
-  box-shadow: 0 0 14px rgba(99, 102, 241, 0.35);
+  background: var(--color-accent);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: var(--specular-top), 0 2px 8px rgba(10, 132, 255, 0.4);
 }
 
 .btn-pill.primary:hover {
-  background: linear-gradient(135deg, #1d4ed8, #6d28d9);
-  box-shadow: 0 0 18px rgba(99, 102, 241, 0.5);
+  background: #0071e3;
+  box-shadow: var(--specular-top), 0 4px 12px rgba(10, 132, 255, 0.5);
 }
 
 .sync-status {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  color: var(--text-muted);
-  padding: 0 6px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  padding: 0 4px;
 }
 
 .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background-color: var(--color-success);
   box-shadow: 0 0 8px var(--color-success);
@@ -225,14 +932,16 @@ html, body, #root {
   background-color: var(--bg-canvas) !important;
 }
 
-/* Custom SaaG Node */
+/* Custom SaaG Node (Xcode Symbol Card) */
 .saag-node {
-  min-width: 260px;
-  max-width: 340px;
-  background: #0f172a;
-  border-radius: 12px;
+  min-width: 270px;
+  max-width: 350px;
+  background: var(--bg-card);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-radius: 16px;
   border: 1px solid var(--border-subtle);
-  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--specular-top), 0 12px 36px -4px rgba(0, 0, 0, 0.55);
   font-family: var(--font-sans);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
   overflow: hidden;
@@ -240,12 +949,12 @@ html, body, #root {
 
 .saag-node:hover {
   border-color: var(--border-active);
-  box-shadow: 0 14px 40px -5px rgba(0, 0, 0, 0.75);
+  box-shadow: var(--specular-top), 0 16px 44px -4px rgba(0, 0, 0, 0.7);
 }
 
 .saag-node.selected {
   border-color: var(--color-accent) !important;
-  box-shadow: 0 0 0 2px var(--color-accent), 0 14px 40px -5px rgba(0, 0, 0, 0.8) !important;
+  box-shadow: 0 0 0 2px var(--color-accent), var(--specular-top), 0 18px 48px rgba(0, 0, 0, 0.75) !important;
 }
 
 /* Node Header By Kind */
@@ -309,26 +1018,27 @@ html, body, #root {
 .saag-node.kind-repository .node-kind-badge { color: var(--color-repository); }
 
 .node-name {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--text-primary);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
+  letter-spacing: -0.015em;
 }
 
 /* Node Section: State Properties */
 .node-section {
   padding: 8px 12px;
   border-bottom: 1px solid var(--border-subtle);
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.18);
 }
 
 .section-label {
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 600;
   text-transform: uppercase;
   color: var(--text-muted);
-  margin-bottom: 6px;
-  letter-spacing: 0.05em;
+  margin-bottom: 5px;
+  letter-spacing: 0.04em;
 }
 
 .state-tags {
@@ -341,17 +1051,17 @@ html, body, #root {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: 10.5px;
   font-family: var(--font-mono);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: 5px;
   background: var(--bg-subtle);
   border: 1px solid var(--border-subtle);
   color: var(--text-secondary);
 }
 
 .state-tag .wrapper {
-  color: #c084fc;
+  color: #bf5af2;
   font-weight: 500;
 }
 
@@ -360,7 +1070,7 @@ html, body, #root {
   padding: 6px 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .port-row {
@@ -371,11 +1081,12 @@ html, body, #root {
   position: relative;
   font-size: 11px;
   font-family: var(--font-mono);
-  min-height: 26px;
+  min-height: 24px;
+  transition: background 0.1s ease;
 }
 
 .port-row:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .port-label {
@@ -389,7 +1100,7 @@ html, body, #root {
 }
 
 .port-type {
-  font-size: 10px;
+  font-size: 9.5px;
   color: var(--text-muted);
   max-width: 130px;
   overflow: hidden;
@@ -397,35 +1108,35 @@ html, body, #root {
   white-space: nowrap;
 }
 
-/* React Flow Socket Handles */
+/* React Flow Socket Handles (Apple Magnetic Pins) */
 .react-flow__handle {
-  width: 10px !important;
-  height: 10px !important;
-  border: 2px solid var(--bg-card) !important;
+  width: 9px !important;
+  height: 9px !important;
+  border: 2px solid #161618 !important;
   border-radius: 50% !important;
-  transition: transform 0.15s ease, background-color 0.15s ease !important;
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s ease !important;
 }
 
 .react-flow__handle:hover {
-  transform: scale(1.4) !important;
+  transform: scale(1.5) !important;
 }
 
 .react-flow__handle-left {
   left: -5px !important;
   background-color: var(--color-accent) !important;
-  box-shadow: 0 0 8px var(--color-accent) !important;
+  box-shadow: 0 0 6px var(--color-accent) !important;
 }
 
 .react-flow__handle-right {
   right: -5px !important;
   background-color: var(--color-success) !important;
-  box-shadow: 0 0 8px var(--color-success) !important;
+  box-shadow: 0 0 6px var(--color-success) !important;
 }
 
-/* Source Anchor Footer */
+/* Source Anchor Footer (Xcode File Link) */
 .node-footer {
   padding: 6px 12px;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.22);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -435,39 +1146,47 @@ html, body, #root {
   border-top: 1px solid var(--border-subtle);
 }
 
-/* Inspector Sidebar */
+/* Inspector Sidebar (Xcode Right Utility Inspector) */
 .inspector-sidebar {
   position: absolute;
-  top: 80px;
+  top: 76px;
   right: 14px;
-  bottom: 20px;
-  width: 360px;
+  bottom: 14px;
+  width: 370px;
   z-index: 50;
   display: flex;
   flex-direction: column;
+  background: var(--bg-panel-elevated);
+  backdrop-filter: blur(32px) saturate(190%);
+  -webkit-backdrop-filter: blur(32px) saturate(190%);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  box-shadow: var(--specular-top), 0 16px 40px rgba(0, 0, 0, 0.55);
   overflow: hidden;
-  animation: slideInRight 0.2s ease-out;
+  animation: slideInRight 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes slideInRight {
-  from { transform: translateX(20px); opacity: 0; }
+  from { transform: translateX(24px); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
 }
 
 .sidebar-header {
-  padding: 14px 16px;
+  padding: 12px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--border-subtle);
+  background: rgba(0, 0, 0, 0.15);
 }
 
 .sidebar-title {
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 13.5px;
+  font-weight: 600;
   display: flex;
   align-items: center;
   gap: 8px;
+  color: var(--text-primary);
 }
 
 .sidebar-content {
@@ -525,30 +1244,94 @@ html, body, #root {
   stroke-width: 3.5 !important;
 }
 
-/* Edge Labels */
+/* Edge Labels — Apple HIG Polished Glass Pill */
+:root {
+  --xy-edge-label-background-color: #1c1c1e;
+  --xy-edge-label-background-color-default: #1c1c1e;
+  --xy-edge-label-color: #ffffff;
+  --xy-edge-label-color-default: #ffffff;
+}
+
+.react-flow__edge-textwrapper {
+  pointer-events: all;
+  cursor: pointer;
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.react-flow__edge-textwrapper:hover {
+  transform: scale(1.06);
+}
+
+.react-flow__edge-textbg {
+  fill: #1c1c1e;
+  fill-opacity: 0.94;
+  stroke: rgba(255, 255, 255, 0.22);
+  stroke-width: 1px;
+  rx: 6px;
+  ry: 6px;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.85));
+  transition: fill 0.15s ease, stroke 0.15s ease, stroke-width 0.15s ease, filter 0.15s ease;
+}
+
 .react-flow__edge-text {
-  font-family: var(--font-mono) !important;
-  font-size: 10px !important;
-  fill: var(--text-secondary) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", -apple-system-subheadline, var(--font-mono), system-ui, sans-serif !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  fill: #ffffff;
+  letter-spacing: -0.01em;
+  user-select: none;
+  pointer-events: none;
+  transition: fill 0.15s ease;
+}
+
+/* Hover & Selected Edge Label Interactive States */
+.react-flow__edge:hover .react-flow__edge-textbg,
+.react-flow__edge-textwrapper:hover .react-flow__edge-textbg {
+  fill: #162032 !important;
+  stroke: #0a84ff !important;
+  stroke-width: 1.5px !important;
+  filter: drop-shadow(0 2px 10px rgba(10, 132, 255, 0.45)) !important;
+}
+
+.react-flow__edge:hover .react-flow__edge-text,
+.react-flow__edge-textwrapper:hover .react-flow__edge-text {
+  fill: #60a5fa !important;
+  font-weight: 700 !important;
+}
+
+.react-flow__edge.selected .react-flow__edge-textbg {
+  fill: #162032 !important;
+  stroke: #0a84ff !important;
+  stroke-width: 2px !important;
+  filter: drop-shadow(0 3px 12px rgba(10, 132, 255, 0.55)) !important;
+}
+
+.react-flow__edge.selected .react-flow__edge-text {
+  fill: #93c5fd !important;
+  font-weight: 700 !important;
 }
 
 .edge-label-badge {
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(8px);
-  border: 1px solid var(--border-subtle);
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 10px;
-  font-family: var(--font-mono);
-  color: var(--text-secondary);
+  background: rgba(28, 28, 30, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", var(--font-mono), system-ui;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
 }
 
 /* Modal Overlay */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(8px);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -561,12 +1344,19 @@ html, body, #root {
   to { opacity: 1; }
 }
 
+/* macOS Sheet Presentation */
 .modal-card {
   width: 440px;
-  padding: 20px;
+  padding: 22px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  background: rgba(36, 36, 40, 0.94);
+  backdrop-filter: blur(36px) saturate(200%);
+  -webkit-backdrop-filter: blur(36px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  box-shadow: var(--specular-top), 0 24px 64px rgba(0, 0, 0, 0.65);
 }
 
 /* Simulation Visual Diagnostics (RFC-003) */
@@ -3344,16 +4134,17 @@ html, body, #root {
    Hierarchical Grouping & Multi-Scale Abstraction
    ========================================================================== */
 
-/* Abstraction Level Switcher in Toolbar */
+/* macOS Native Segmented Control: Abstraction Level */
 .abstraction-level-selector {
   display: flex;
   align-items: center;
-  background: rgba(15, 23, 42, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  padding: 3px;
+  background: rgba(118, 118, 128, 0.24);
+  border: 0.5px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+  padding: 2px;
   gap: 2px;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 .level-segment {
@@ -3361,31 +4152,33 @@ html, body, #root {
   align-items: center;
   gap: 5px;
   padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
+  border-radius: 7px;
+  font-size: 11.5px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  color: rgba(235, 235, 245, 0.65);
   background: transparent;
-  border: 1px solid transparent;
+  border: 0.5px solid transparent;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
   white-space: nowrap;
 }
 
 .level-segment:hover {
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .level-segment.active {
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(99, 102, 241, 0.25));
-  border-color: rgba(56, 189, 248, 0.5);
-  color: #38bdf8;
-  box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), inset 0 0.5px 0 rgba(255, 255, 255, 0.25);
 }
 
 .level-segment .level-icon {
-  font-size: 13px;
+  font-size: 12px;
 }
 
 /* Compound Node Controls */
@@ -3537,12 +4330,13 @@ html, body, #root {
   transform: scale(1.04);
 }
 
-/* Bottleneck Drawer Overlay & Panel */
+/* Bottleneck Drawer (macOS Slide-Over Inspector) */
 .bottleneck-drawer-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(9, 13, 22, 0.55);
-  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   z-index: 100;
   display: flex;
   justify-content: flex-end;
@@ -3552,12 +4346,14 @@ html, body, #root {
   width: 780px;
   max-width: 90vw;
   height: 100vh;
-  background: rgba(15, 23, 42, 0.96);
+  background: rgba(34, 34, 38, 0.94);
+  backdrop-filter: blur(32px) saturate(190%);
+  -webkit-backdrop-filter: blur(32px) saturate(190%);
   border-left: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: -10px 0 35px rgba(0, 0, 0, 0.6);
+  box-shadow: -14px 0 44px rgba(0, 0, 0, 0.65), inset 1px 0 0 rgba(255, 255, 255, 0.1);
   display: flex;
   flex-direction: column;
-  color: #f1f5f9;
+  color: var(--text-primary);
   z-index: 101;
   overflow: hidden;
 }
@@ -4049,16 +4845,17 @@ html, body, #root {
    Phase 10: App Architecture Tree View & Tab-as-a-Branch Navigation
    ========================================================================== */
 
-/* Layout Mode Selector (matches abstraction-level-selector) */
+/* macOS Native Segmented Control: Layout Mode */
 .layout-mode-selector {
   display: flex;
   align-items: center;
-  background: rgba(15, 23, 42, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  padding: 3px;
+  background: rgba(118, 118, 128, 0.24);
+  border: 0.5px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+  padding: 2px;
   gap: 2px;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 /* Branch Filter Group (Toolbar Tab Pills) */
@@ -4461,30 +5258,30 @@ html, body, #root {
   display: inline-block;
 }
 
-/* Floating Canvas Tab Filter Bar (Sleek & Never Overflows Toolbar) */
+/* macOS Native Floating Tab / Branch Bar */
 .canvas-tab-floating-bar {
   position: absolute;
-  top: 80px;
+  top: 76px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 45;
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: rgba(15, 23, 42, 0.82);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 20px;
-  padding: 4px 8px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-  animation: slideInDown 0.25s ease;
+  gap: 3px;
+  background: rgba(36, 36, 40, 0.82);
+  backdrop-filter: blur(28px) saturate(190%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 11px;
+  padding: 3px;
+  box-shadow: var(--specular-top), 0 8px 24px rgba(0, 0, 0, 0.45);
+  animation: slideInDown 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes slideInDown {
   from {
     opacity: 0;
-    transform: translate(-50%, -10px);
+    transform: translate(-50%, -8px);
   }
   to {
     opacity: 1;
@@ -4497,45 +5294,618 @@ html, body, #root {
   align-items: center;
   gap: 6px;
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: 14px;
-  padding: 5px 12px;
-  font-size: 12px;
+  border: 0.5px solid transparent;
+  border-radius: 8px;
+  padding: 4px 11px;
+  font-size: 11.5px;
   font-weight: 500;
-  color: #94a3b8;
+  font-family: var(--font-sans);
+  color: rgba(235, 235, 245, 0.65);
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
   white-space: nowrap;
 }
 
 .canvas-tab-floating-bar .tab-pill:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .canvas-tab-floating-bar .tab-pill.active {
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.22), rgba(99, 102, 241, 0.22));
-  border-color: rgba(56, 189, 248, 0.5);
-  color: #38bdf8;
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
   font-weight: 600;
-  box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), inset 0 0.5px 0 rgba(255, 255, 255, 0.25);
 }
 
 .canvas-tab-floating-bar .tab-pill-icon {
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .canvas-tab-floating-bar .tab-pill-count {
-  background: rgba(255, 255, 255, 0.1);
-  padding: 1px 6px;
-  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  padding: 1px 5px;
+  border-radius: 8px;
   font-size: 10px;
-  color: #94a3b8;
+  font-family: var(--font-mono);
+  color: rgba(235, 235, 245, 0.7);
 }
 
 .canvas-tab-floating-bar .tab-pill.active .tab-pill-count {
-  background: rgba(56, 189, 248, 0.25);
-  color: #7dd3fc;
+  background: rgba(255, 255, 255, 0.24);
+  color: #ffffff;
 }
+
+/* ==========================================================================
+   Apple HIG: React Flow Controls & MiniMap
+   ========================================================================== */
+.react-flow__controls {
+  background: rgba(32, 32, 36, 0.85) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 10px !important;
+  box-shadow: var(--specular-top), 0 8px 24px rgba(0, 0, 0, 0.45) !important;
+  overflow: hidden !important;
+}
+
+.react-flow__controls-button {
+  background: transparent !important;
+  border-bottom: 0.5px solid rgba(255, 255, 255, 0.08) !important;
+  fill: rgba(235, 235, 245, 0.75) !important;
+  transition: all 0.15s ease !important;
+  width: 28px !important;
+  height: 28px !important;
+}
+
+.react-flow__controls-button:last-child {
+  border-bottom: none !important;
+}
+
+.react-flow__controls-button:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  fill: #ffffff !important;
+}
+
+.react-flow__controls-button svg {
+  max-width: 14px !important;
+  max-height: 14px !important;
+}
+
+.react-flow__minimap {
+  background: rgba(26, 26, 30, 0.88) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 14px !important;
+  box-shadow: var(--specular-top), 0 12px 32px rgba(0, 0, 0, 0.5) !important;
+  overflow: hidden !important;
+}
+
+.react-flow__minimap-mask {
+  fill: rgba(0, 0, 0, 0.65) !important;
+  stroke: var(--color-accent) !important;
+  stroke-width: 1.5 !important;
+}
+
+.react-flow__attribution {
+  display: none !important;
+}
+
+/* ==========================================================================
+   SaaG 3-Domain Architecture: iOS App | Agents Graph | ML as a Graph
+   Apple Human Interface Guidelines & Native Design Tokens
+   ========================================================================== */
+
+/* Top-Level Domain Mode Segmented Control */
+.domain-segmented-control {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.36);
+  padding: 3px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
+  gap: 2px;
+}
+
+.domain-segment {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.domain-segment:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.domain-segment.active {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), var(--specular-top);
+  font-weight: 600;
+}
+
+.domain-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+/* ML Constraint Status Alert Pill in Toolbar */
+.ml-constraint-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ml-constraint-btn.status-safe {
+  box-shadow: 0 0 12px rgba(48, 209, 88, 0.15);
+}
+
+.ml-constraint-btn.status-oom_error {
+  animation: pulse-danger-glow 2s infinite ease-in-out;
+}
+
+@keyframes pulse-danger-glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(255, 69, 58, 0.3); }
+  50% { box-shadow: 0 0 18px rgba(255, 69, 58, 0.7); }
+}
+
+/* Universal Cross-Project Linkage Badges */
+.node-cross-refs-section {
+  padding: 8px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(10, 132, 255, 0.04);
+}
+
+.cross-refs-header {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #38bdf8;
+  margin-bottom: 6px;
+}
+
+.cross-refs-pills {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.cross-ref-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: rgba(10, 132, 255, 0.12);
+  border: 1px solid rgba(10, 132, 255, 0.3);
+  border-radius: 6px;
+  color: #7dd3fc;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.16s ease;
+  text-align: left;
+}
+
+.cross-ref-pill:hover {
+  background: rgba(10, 132, 255, 0.22);
+  border-color: #38bdf8;
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.cross-ref-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cross-ref-arrow {
+  opacity: 0.6;
+}
+
+/* Node Kind Theming for New Domains */
+.saag-node.kind-hardware .node-header {
+  background: rgba(52, 211, 153, 0.14);
+  border-bottom-color: rgba(52, 211, 153, 0.38);
+}
+.saag-node.kind-hardware {
+  border-color: rgba(52, 211, 153, 0.38);
+}
+.saag-node.kind-hardware .node-kind-badge { color: #34d399; }
+
+.saag-node.kind-model .node-header {
+  background: rgba(255, 55, 95, 0.14);
+  border-bottom-color: rgba(255, 55, 95, 0.38);
+}
+.saag-node.kind-model {
+  border-color: rgba(255, 55, 95, 0.38);
+}
+.saag-node.kind-model .node-kind-badge { color: #ff375f; }
+
+.saag-node.kind-agent .node-header {
+  background: rgba(191, 90, 242, 0.14);
+  border-bottom-color: rgba(191, 90, 242, 0.38);
+}
+.saag-node.kind-agent {
+  border-color: rgba(191, 90, 242, 0.38);
+}
+.saag-node.kind-agent .node-kind-badge { color: #bf5af2; }
+
+.saag-node.kind-tool .node-header {
+  background: rgba(100, 210, 255, 0.14);
+  border-bottom-color: rgba(100, 210, 255, 0.38);
+}
+.saag-node.kind-tool {
+  border-color: rgba(100, 210, 255, 0.38);
+}
+.saag-node.kind-tool .node-kind-badge { color: #64d2ff; }
+
+.saag-node.kind-router .node-header {
+  background: rgba(90, 200, 250, 0.14);
+  border-bottom-color: rgba(90, 200, 250, 0.38);
+}
+.saag-node.kind-router {
+  border-color: rgba(90, 200, 250, 0.38);
+}
+.saag-node.kind-router .node-kind-badge { color: #5ac8fa; }
+
+.saag-node.kind-gate .node-header {
+  background: rgba(255, 159, 10, 0.14);
+  border-bottom-color: rgba(255, 159, 10, 0.38);
+}
+.saag-node.kind-gate {
+  border-color: rgba(255, 159, 10, 0.38);
+}
+.saag-node.kind-gate .node-kind-badge { color: #ff9f0a; }
+
+.saag-node.kind-preprocessor .node-header {
+  background: rgba(48, 209, 88, 0.14);
+  border-bottom-color: rgba(48, 209, 88, 0.38);
+}
+.saag-node.kind-preprocessor {
+  border-color: rgba(48, 209, 88, 0.38);
+}
+.saag-node.kind-preprocessor .node-kind-badge { color: #30d158; }
+
+.saag-node.kind-adapter .node-header {
+  background: rgba(218, 143, 255, 0.14);
+  border-bottom-color: rgba(218, 143, 255, 0.38);
+}
+.saag-node.kind-adapter {
+  border-color: rgba(218, 143, 255, 0.38);
+}
+.saag-node.kind-adapter .node-kind-badge { color: #da8fff; }
+
+.saag-node.kind-optimizer .node-header {
+  background: rgba(255, 214, 10, 0.14);
+  border-bottom-color: rgba(255, 214, 10, 0.38);
+}
+.saag-node.kind-optimizer {
+  border-color: rgba(255, 214, 10, 0.38);
+}
+.saag-node.kind-optimizer .node-kind-badge { color: #ffd60a; }
+
+.saag-node.kind-interconnect .node-header {
+  background: rgba(56, 189, 248, 0.14);
+  border-bottom-color: rgba(56, 189, 248, 0.38);
+}
+.saag-node.kind-interconnect {
+  border-color: rgba(56, 189, 248, 0.38);
+}
+.saag-node.kind-interconnect .node-kind-badge { color: #38bdf8; }
+
+.saag-node.kind-exporter .node-header {
+  background: rgba(0, 242, 254, 0.14);
+  border-bottom-color: rgba(0, 242, 254, 0.38);
+}
+.saag-node.kind-exporter {
+  border-color: rgba(0, 242, 254, 0.38);
+}
+.saag-node.kind-exporter .node-kind-badge { color: #00f2fe; }
+
+/* Dedicated Hardware Node Chassis Card */
+.node-hardware-card {
+  margin: 8px 12px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(52, 211, 153, 0.28);
+  border-radius: 9px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hardware-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.hardware-gpu-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hardware-gpu-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.hardware-count-tag {
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(52, 211, 153, 0.18);
+  color: #34d399;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.hardware-specs-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.hw-chip {
+  font-size: 9.5px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--text-secondary);
+}
+
+.vram-meter-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+.vram-meter-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.vram-meter-labels strong {
+  color: #34d399;
+}
+
+.vram-meter-track {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.vram-meter-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #34d399, #10b981);
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.vram-meter-sub {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+/* Dedicated ML Model Card */
+.node-model-card {
+  margin: 8px 12px;
+  background: rgba(30, 20, 30, 0.6);
+  border: 1px solid rgba(255, 55, 95, 0.28);
+  border-radius: 9px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.model-header-specs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.model-param-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ff375f;
+  background: rgba(255, 55, 95, 0.16);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.model-precision-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: #fda4af;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+
+.model-context-badge {
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.model-framework-row {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* Preprocessor Card */
+.node-preprocessor-card {
+  margin: 8px 12px;
+  background: rgba(20, 35, 25, 0.6);
+  border: 1px solid rgba(48, 209, 88, 0.28);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cudf-glow-badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #30d158;
+}
+
+.preprocessor-throughput-sub {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9.5px;
+  color: var(--text-muted);
+}
+
+/* Adapter & Optimizer Cards */
+.node-adapter-card,
+.node-optimizer-card {
+  margin: 8px 12px;
+  background: rgba(25, 25, 30, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.adapter-badge-row,
+.optimizer-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.adapter-rank-badge,
+.opt-algo-badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #ffd60a;
+}
+
+.opt-zero-badge {
+  font-size: 9.5px;
+  background: rgba(255, 214, 10, 0.16);
+  color: #ffd60a;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.adapter-sub,
+.optimizer-sub {
+  font-size: 9.5px;
+  color: var(--text-muted);
+  display: flex;
+  justify-content: space-between;
+}
+
+.chkpt-badge {
+  color: #30d158;
+}
+
+/* Agent & Gate Cards */
+.node-agent-card {
+  margin: 8px 12px;
+  background: rgba(35, 20, 45, 0.6);
+  border: 1px solid rgba(191, 90, 242, 0.28);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.agent-role-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #e9d5ff;
+}
+
+.agent-tools-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+}
+
+.agent-tools-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.agent-tool-chip {
+  font-size: 9px;
+  background: rgba(191, 90, 242, 0.18);
+  color: #d8b4fe;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.node-gate-card {
+  margin: 8px 12px;
+  background: rgba(45, 30, 15, 0.6);
+  border: 1px solid rgba(255, 159, 10, 0.28);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gate-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #ff9f0a;
+}
+
+.gate-role-row {
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
 
 

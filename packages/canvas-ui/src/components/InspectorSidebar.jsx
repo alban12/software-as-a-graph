@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { X, Trash2, Plus, Code2, Layers, Cpu, Database, Globe, Smartphone, Check, RefreshCw, Flame, Minimize2, Bot, ShieldCheck, ShieldAlert, GitCommit } from 'lucide-react';
+import {
+  X, Trash2, Plus, Code2, Layers, Cpu, Database, Globe, Smartphone,
+  Check, RefreshCw, Flame, Minimize2, Bot, ShieldCheck, ShieldAlert,
+  GitCommit, Server, Activity, Brain, Rocket, ExternalLink
+} from 'lucide-react';
 import FirebaseLogo from './FirebaseLogo';
 import { validateEdgeConnection, inferEdgeContract } from '../utils/edgeGuardrails';
+import { parseSaagUri } from '../utils/crossReferences';
 
 export default function InspectorSidebar({
   selectedElement,
@@ -15,7 +20,8 @@ export default function InspectorSidebar({
   activeScope = null,
   onOpenServicePreview,
   agentNodeIds = [],
-  onToggleAgentNode
+  onToggleAgentNode,
+  onNavigateCrossReference
 }) {
   if (!selectedElement) return null;
 
@@ -147,10 +153,28 @@ export default function InspectorSidebar({
                 value={node.kind}
                 onChange={(e) => onUpdateNode(node.id, { ...node, kind: e.target.value })}
               >
-                <option value="view">View (SwiftUI)</option>
-                <option value="viewModel">ViewModel / Observable</option>
-                <option value="service">Service / Client</option>
-                <option value="repository">Repository / Storage</option>
+                <optgroup label="iOS App Architecture">
+                  <option value="view">View (SwiftUI)</option>
+                  <option value="viewModel">ViewModel / Observable</option>
+                  <option value="service">Service / Client</option>
+                  <option value="repository">Repository / Storage</option>
+                </optgroup>
+                <optgroup label="Multi-Agent System">
+                  <option value="agent">Autonomous Agent</option>
+                  <option value="tool">Tool / API Execution</option>
+                  <option value="router">Intent Router</option>
+                  <option value="gate">Human Approval Gate</option>
+                </optgroup>
+                <optgroup label="ML Systems & Hardware">
+                  <option value="hardware">Hardware / GPU Cluster</option>
+                  <option value="model">Neural Network Model</option>
+                  <option value="dataset">Dataset / Data Source</option>
+                  <option value="preprocessor">Preprocessor / cuDF Pipeline</option>
+                  <option value="adapter">PEFT / LoRA Adapter</option>
+                  <option value="optimizer">Optimizer & Training Hyperparams</option>
+                  <option value="interconnect">Interconnect Fabric</option>
+                  <option value="exporter">Serving Engine (vLLM / CoreML)</option>
+                </optgroup>
               </select>
             </div>
 
@@ -240,6 +264,205 @@ export default function InspectorSidebar({
                 <div style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', background: 'var(--bg-card)', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-subtle)' }}>
                   <div>📄 {node.sourceAnchor.filePath}</div>
                   <div style={{ marginTop: 4, color: 'var(--text-muted)' }}>Lines {node.sourceAnchor.startLine} to {node.sourceAnchor.endLine}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Cross-Project Linkages Section */}
+            {node.crossReferences && node.crossReferences.length > 0 && (
+              <div className="sidebar-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <ExternalLink size={13} color="#0a84ff" />
+                  <span>Cross-Project Linkages ({node.crossReferences.length})</span>
+                </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {node.crossReferences.map((ref, idx) => {
+                    const parsed = parseSaagUri(ref.targetUri);
+                    return (
+                      <div key={idx} style={{ background: 'var(--bg-card)', padding: '10px', borderRadius: 8, border: '1px solid rgba(10, 132, 255, 0.3)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {parsed?.icon} {ref.label || parsed?.typeLabel || 'Target Node'}
+                          </span>
+                          <span className="badge-online" style={{ fontSize: '9px', textTransform: 'uppercase' }}>
+                            {ref.relationship || 'cross_ref'}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                          {ref.targetUri}
+                        </div>
+                        {ref.contract && (
+                          <div style={{ fontSize: '10px', color: '#38bdf8' }}>
+                            Contract: <code>{ref.contract}</code>
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          className="btn-pill"
+                          style={{
+                            marginTop: 4,
+                            justifyContent: 'center',
+                            fontSize: '11px',
+                            background: 'rgba(10, 132, 255, 0.16)',
+                            borderColor: '#0a84ff',
+                            color: '#0a84ff'
+                          }}
+                          onClick={() => onNavigateCrossReference?.(ref.targetUri)}
+                        >
+                          <span>Jump to Linked Node</span>
+                          <ExternalLink size={11} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Hardware Specifications Section */}
+            {Boolean(node.hardwareMeta) && (
+              <div className="sidebar-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Server size={13} color="#34d399" />
+                  <span>Hardware Specifications</span>
+                </label>
+                <div style={{ background: 'var(--bg-card)', padding: '10px', borderRadius: 8, border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 6, fontSize: '11px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>GPU Accelerator:</span>
+                    <strong>{node.hardwareMeta.gpuModel}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Cluster Size:</span>
+                    <span>{node.hardwareMeta.gpuCount}x GPUs ({node.hardwareMeta.architecture})</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Cluster VRAM:</span>
+                    <span style={{ color: '#34d399', fontWeight: 600 }}>
+                      {(node.hardwareMeta.vramPerGpuGb || 80) * (node.hardwareMeta.gpuCount || 1)} GB HBM3 ({node.hardwareMeta.vramPerGpuGb}GB / GPU)
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Interconnect:</span>
+                    <span>{node.hardwareMeta.interconnectType} ({node.hardwareMeta.interconnectBandwidthGbSec || 900} GB/s)</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Memory Bandwidth:</span>
+                    <span>{node.hardwareMeta.memoryBandwidthTbSec || 3.35} TB/s</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Compute Capability:</span>
+                    <span>{node.hardwareMeta.computeCapability || 'SM 9.0'}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ML Model Architecture Section */}
+            {Boolean(node.mlMeta) && (
+              <div className="sidebar-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Brain size={13} color="#ff375f" />
+                  <span>ML Model & Hyperparameters</span>
+                </label>
+                <div style={{ background: 'var(--bg-card)', padding: '10px', borderRadius: 8, border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 6, fontSize: '11px' }}>
+                  {node.mlMeta.framework && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Framework:</span>
+                      <strong>{node.mlMeta.framework}</strong>
+                    </div>
+                  )}
+                  {node.mlMeta.paramCount && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Parameter Count:</span>
+                      <span style={{ fontWeight: 600 }}>{node.mlMeta.paramCount}</span>
+                    </div>
+                  )}
+                  {node.mlMeta.precision && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Precision:</span>
+                      <span style={{ color: '#ff375f', fontWeight: 600 }}>{node.mlMeta.precision}</span>
+                    </div>
+                  )}
+                  {node.mlMeta.contextWindow && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Context Window:</span>
+                      <span>{node.mlMeta.contextWindow.toLocaleString()} tokens</span>
+                    </div>
+                  )}
+                  {node.mlMeta.optimizerType && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Optimizer:</span>
+                      <span>{node.mlMeta.optimizerType} (ZeRO-{node.mlMeta.zeroStage ?? 3})</span>
+                    </div>
+                  )}
+                  {node.mlMeta.loraRank && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>LoRA Rank / Alpha:</span>
+                      <span>r={node.mlMeta.loraRank}, α={node.mlMeta.loraAlpha}</span>
+                    </div>
+                  )}
+                  {node.mlMeta.gradientCheckpointing !== undefined && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Grad Checkpointing:</span>
+                      <span style={{ color: node.mlMeta.gradientCheckpointing ? '#30d158' : 'var(--text-muted)' }}>
+                        {node.mlMeta.gradientCheckpointing ? 'Enabled (75% VRAM saved)' : 'Disabled'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* AI Agent Configuration Section */}
+            {Boolean(node.agentMeta) && (
+              <div className="sidebar-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Bot size={13} color="#c084fc" />
+                  <span>AI Agent Configuration</span>
+                </label>
+                <div style={{ background: 'var(--bg-card)', padding: '10px', borderRadius: 8, border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 6, fontSize: '11px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Role:</span>
+                    <strong>{node.agentMeta.role}</strong>
+                  </div>
+                  {node.agentMeta.systemPrompt && (
+                    <div>
+                      <span style={{ color: 'var(--text-muted)' }}>System Prompt:</span>
+                      <div style={{ marginTop: 4, fontStyle: 'italic', color: 'var(--text-secondary)', background: 'rgba(0,0,0,0.2)', padding: '6px 8px', borderRadius: 4, fontSize: '10px' }}>
+                        "{node.agentMeta.systemPrompt}"
+                      </div>
+                    </div>
+                  )}
+                  {node.agentMeta.authorizedTools && node.agentMeta.authorizedTools.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Authorized Tools:</span>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                        {node.agentMeta.authorizedTools.map((t, idx) => (
+                          <span key={idx} className="badge-online" style={{ fontSize: '9px' }}>{t}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Human Gate Section */}
+            {Boolean(node.gateMeta) && (
+              <div className="sidebar-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <ShieldCheck size={13} color="#ff9f0a" />
+                  <span>Human Gate Requirements</span>
+                </label>
+                <div style={{ background: 'var(--bg-card)', padding: '10px', borderRadius: 8, border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 6, fontSize: '11px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Required Role:</span>
+                    <strong>{node.gateMeta.requiredRole}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Approval Mode:</span>
+                    <span>{node.gateMeta.approvalMode || 'Blocking'}</span>
+                  </div>
                 </div>
               </div>
             )}

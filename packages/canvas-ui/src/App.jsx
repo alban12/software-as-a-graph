@@ -13,6 +13,7 @@ import {
 
 import CustomNode from './components/CustomNode';
 import Toolbar from './components/Toolbar';
+import LeftSidebar from './components/LeftSidebar';
 import InspectorSidebar from './components/InspectorSidebar';
 import AddNodeModal from './components/AddNodeModal';
 import SimulationModal from './components/SimulationModal';
@@ -26,7 +27,9 @@ import EdgeGuardrailToast from './components/EdgeGuardrailToast';
 import BottleneckDrawer from './components/BottleneckDrawer';
 import AppTreeNavigator from './components/AppTreeNavigator';
 import { analyzeBottlenecks } from './analysis/bottleneckEngine';
-import { decomposeAppTree, getNodeDimensions, rearrangeNodes, detectCollisions, computeAdaptiveTreeLayout } from './analysis/treeEngine';
+import { decomposeAppTree, getNodeDimensions, rearrangeNodes, detectCollisions, computeAdaptiveTreeLayout, isSystemDesignNode } from './analysis/treeEngine';
+import { analyzeMlConstraints } from './analysis/mlConstraintEngine';
+import { parseSaagUri } from './utils/crossReferences';
 import { generateScopeContract } from './utils/scopeContract';
 import { validateEdgeConnection, inferEdgeContract } from './utils/edgeGuardrails';
 import { PRESET_SCENARIOS } from './simulation/engine';
@@ -35,7 +38,34 @@ const nodeTypes = {
   saagNode: CustomNode,
 };
 
+const DEFAULT_EDGE_LABEL_STYLE = {
+  fill: '#ffffff',
+  fontWeight: 600,
+  fontSize: 11.5,
+  fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", monospace'
+};
+
+const DEFAULT_EDGE_LABEL_BG_STYLE = {
+  fill: '#1c1c1e',
+  fillOpacity: 0.94,
+  stroke: 'rgba(255, 255, 255, 0.22)',
+  strokeWidth: 1
+};
+
+const DEFAULT_EDGE_LABEL_PADDING = [8, 5];
+const DEFAULT_EDGE_LABEL_BORDER_RADIUS = 6;
+
 export default function App() {
+  const defaultEdgeOptions = useMemo(
+    () => ({
+      labelStyle: DEFAULT_EDGE_LABEL_STYLE,
+      labelBgStyle: DEFAULT_EDGE_LABEL_BG_STYLE,
+      labelBgPadding: DEFAULT_EDGE_LABEL_PADDING,
+      labelBgBorderRadius: DEFAULT_EDGE_LABEL_BORDER_RADIUS
+    }),
+    []
+  );
+
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [rawGraph, setRawGraph] = useState(null);
@@ -80,9 +110,45 @@ export default function App() {
   const [isScopeModalOpen, setIsScopeModalOpen] = useState(false);
   const [scopeModalTab, setScopeModalTab] = useState('prompt');
 
+  // Modern Left Navigation Sidebar (Collapsible with Cmd+B)
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        setIsLeftSidebarOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // Benchmark / Project Registry Switching
   const [projects, setProjects] = useState([]);
   const [activeProjectId, setActiveProjectId] = useState('landmarks');
+
+  const activeProject = useMemo(() => {
+    return projects.find((p) => p.id === activeProjectId) || {
+      id: activeProjectId,
+      projectType: metadata?.projectType || 'ios'
+    };
+  }, [projects, activeProjectId, metadata?.projectType]);
+
+  const currentDomain = activeProject?.projectType || metadata?.projectType || 'ios';
+
+  // ML Systems & Hardware Constraint Engine Evaluation
+  const mlConstraintData = useMemo(() => {
+    if (!rawGraph) return null;
+    const projectType = rawGraph.metadata?.projectType;
+    const hasMlNodes = Object.values(rawGraph.nodes || {}).some((n) =>
+      ['model', 'hardware', 'dataset', 'preprocessor', 'optimizer', 'interconnect', 'exporter'].includes(n.kind)
+    );
+    if (projectType === 'ml' || hasMlNodes) {
+      return analyzeMlConstraints(rawGraph);
+    }
+    return null;
+  }, [rawGraph]);
 
   // Bottleneck Diagnostic Engine & Architectural Reorganization
   const [isBottleneckLensActive, setIsBottleneckLensActive] = useState(false);
@@ -288,6 +354,10 @@ export default function App() {
         },
         data: edge,
         label: edge.contract?.payloadType ? edge.contract.payloadType.split('->').pop().trim() : undefined,
+        labelStyle: DEFAULT_EDGE_LABEL_STYLE,
+        labelBgStyle: DEFAULT_EDGE_LABEL_BG_STYLE,
+        labelBgPadding: DEFAULT_EDGE_LABEL_PADDING,
+        labelBgBorderRadius: DEFAULT_EDGE_LABEL_BORDER_RADIUS,
       }));
       return [...remaining, ...newRfEdges];
     });
@@ -357,23 +427,27 @@ export default function App() {
     const tree = decomposeAppTree(saagGraph);
     const currentLevel = abstractionLevelRef.current || 'L1';
 
-    // Filter visible nodes based on active abstraction level
+    // Filter visible nodes based on active abstraction level and layout mode
     const rawNodes = saagGraph.nodes;
     const initialVisible = Object.values(rawNodes).filter((n) => {
+      if (layoutMode === 'tree' && !isSystemDesignNode(n)) return false;
       if (currentLevel === 'L1') {
-        return n.level === 'L1_SCREEN';
+        return n.level === 'L1_SCREEN' || n.level === 'L1_SYSTEM' || !n.level;
       }
       if (currentLevel === 'L2') {
-        return n.level !== 'L3_PRIMITIVE';
+        return n.level !== 'L3_PRIMITIVE' && n.level !== 'L3_EXECUTION';
       }
       return true;
     });
 
-    const adaptivePositions = computeAdaptiveTreeLayout(initialVisible, tree, saagGraph);
+    const isIosProject = !saagGraph.metadata?.projectType || saagGraph.metadata.projectType === 'ios';
+    const adaptivePositions = isIosProject
+      ? computeAdaptiveTreeLayout(initialVisible, tree, saagGraph)
+      : {};
     const fullTreePositions = tree?.treePositions || {};
 
     const rfNodes = Object.values(saagGraph.nodes).map((node) => {
-      const computedPos = adaptivePositions[node.id] || fullTreePositions[node.id] || node.canvasMeta?.position || { x: 100, y: 100 };
+      const computedPos = (isIosProject && adaptivePositions[node.id]) || fullTreePositions[node.id] || node.canvasMeta?.position || { x: 100, y: 100 };
       return {
         id: node.id,
         type: 'saagNode',
@@ -387,7 +461,8 @@ export default function App() {
           onScreenAction: handleScreenAction,
           onToggleSqueeze: handleToggleSqueeze,
           onOpenServicePreview: handleOpenServicePreview,
-          onOpenPreviewModal: handleOpenPreviewModal
+          onOpenPreviewModal: handleOpenPreviewModal,
+          onNavigateCrossReference: handleNavigateCrossReference
         },
       };
     });
@@ -406,6 +481,10 @@ export default function App() {
       },
       data: edge,
       label: edge.contract?.payloadType ? edge.contract.payloadType.split('->').pop().trim() : undefined,
+      labelStyle: DEFAULT_EDGE_LABEL_STYLE,
+      labelBgStyle: DEFAULT_EDGE_LABEL_BG_STYLE,
+      labelBgPadding: DEFAULT_EDGE_LABEL_PADDING,
+      labelBgBorderRadius: DEFAULT_EDGE_LABEL_BORDER_RADIUS,
     }));
 
     setNodes(rfNodes);
@@ -484,6 +563,55 @@ export default function App() {
     }
   }, [transformGraphToReactFlow]);
 
+  // Switch Domain Mode (iOS App | Agents Graph | ML as a Graph)
+  const handleSwitchDomain = useCallback(async (domainId) => {
+    if (domainId === currentDomain) return;
+
+    const domainProjects = projects.filter((p) => (p.projectType || 'ios') === domainId);
+    let targetProjectId = domainProjects[0]?.id;
+
+    if (!targetProjectId) {
+      if (domainId === 'ios') targetProjectId = 'landmarks';
+      else if (domainId === 'agents') targetProjectId = 'agent_orchestrator';
+      else if (domainId === 'ml') targetProjectId = 'ml_pipeline';
+    }
+
+    if (targetProjectId) {
+      await handleSwitchProject(targetProjectId);
+    }
+  }, [currentDomain, projects, handleSwitchProject]);
+
+  // Navigate Cross-Project References: saag://<projectType>/<projectId>/<nodeId>
+  const handleNavigateCrossReference = useCallback(async (targetUri) => {
+    const parsed = parseSaagUri(targetUri);
+    if (!parsed) {
+      console.warn('Invalid SaaG URI:', targetUri);
+      return;
+    }
+
+    const { projectId, nodeId } = parsed;
+
+    // Switch project if navigating across projects
+    if (projectId && projectId !== activeProjectId) {
+      await handleSwitchProject(projectId);
+    }
+
+    // Highlight and center target node
+    if (nodeId) {
+      setTimeout(() => {
+        const currentNodes = rawGraphRef.current?.nodes || {};
+        const targetNode = currentNodes[nodeId];
+        if (targetNode) {
+          setSelectedElement({ data: targetNode });
+          const pos = targetNode.canvasMeta?.position;
+          if (pos && reactFlowInstanceRef.current) {
+            reactFlowInstanceRef.current.setCenter(pos.x + 140, pos.y + 100, { zoom: 1.15, duration: 600 });
+          }
+        }
+      }, 400);
+    }
+  }, [activeProjectId, handleSwitchProject]);
+
   // Initial load on mount
   useEffect(() => {
     loadProjects();
@@ -531,19 +659,24 @@ export default function App() {
       const nodeLevel = n.data?.level || rawNodes[n.id]?.level || 'L1_SCREEN';
       const parentId = n.data?.parentId || rawNodes[n.id]?.parentId;
 
+      // In Tree View mode, filter out non-architectural noise (abstract away what an LLM handles)
+      if (layoutMode === 'tree') {
+        if (!isSystemDesignNode(n)) return false;
+      }
+
       if (abstractionLevel === 'L1') {
         // If node is a nested child of a compound screen:
         // Only show if user explicitly clicked expand on the parent
         if (parentId) {
           return expandedCompoundIds.has(parentId);
         }
-        // At L1 level, show strictly high-level screens and central state hubs
-        return nodeLevel === 'L1_SCREEN';
+        // At L1 level, show strictly high-level screens and central architecture nodes
+        return nodeLevel === 'L1_SCREEN' || nodeLevel === 'L1_SYSTEM' || !nodeLevel;
       }
 
       if (abstractionLevel === 'L2') {
-        // L2 Components: Show screens and subviews, hide L3 primitives
-        if (nodeLevel === 'L3_PRIMITIVE') return false;
+        // L2 Components: Show screens and subviews, hide L3 primitives and execution units
+        if (nodeLevel === 'L3_PRIMITIVE' || nodeLevel === 'L3_EXECUTION') return false;
         return true;
       }
 
@@ -588,7 +721,8 @@ export default function App() {
             onScreenAction: handleScreenAction,
             onToggleSqueeze: handleToggleSqueeze,
             onOpenServicePreview: handleOpenServicePreview,
-            onOpenPreviewModal: handleOpenPreviewModal
+            onOpenPreviewModal: handleOpenPreviewModal,
+            onNavigateCrossReference: handleNavigateCrossReference
           }
         };
       });
@@ -655,7 +789,8 @@ export default function App() {
           onScreenAction: handleScreenAction,
           onToggleSqueeze: handleToggleSqueeze,
           onOpenServicePreview: handleOpenServicePreview,
-          onOpenPreviewModal: handleOpenPreviewModal
+          onOpenPreviewModal: handleOpenPreviewModal,
+          onNavigateCrossReference: handleNavigateCrossReference
         }
       };
     });
@@ -672,12 +807,14 @@ export default function App() {
     bottleneckNodeMap,
     activeBranchId,
     treeData,
+    layoutMode,
     handleToggleCompound,
     handleToggleAgentNode,
     handleScreenAction,
     handleToggleSqueeze,
     handleOpenServicePreview,
-    handleOpenPreviewModal
+    handleOpenPreviewModal,
+    handleNavigateCrossReference
   ]);
 
   const displayEdges = useMemo(() => {
@@ -737,7 +874,21 @@ export default function App() {
             animated: true,
             style: { stroke: '#f43f5e', strokeWidth: 3 },
             markerEnd: { type: MarkerType.ArrowClosed, color: '#f43f5e' },
-            label: `⚠️ Latency: ${latency}ms`
+            label: `⚠️ Latency: ${latency}ms`,
+            labelStyle: {
+              fill: '#fca5a5',
+              fontWeight: 700,
+              fontSize: 11.5,
+              fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", monospace'
+            },
+            labelBgStyle: {
+              fill: '#2a1115',
+              fillOpacity: 0.96,
+              stroke: '#f43f5e',
+              strokeWidth: 1.2
+            },
+            labelBgPadding: DEFAULT_EDGE_LABEL_PADDING,
+            labelBgBorderRadius: DEFAULT_EDGE_LABEL_BORDER_RADIUS
           };
         }
 
@@ -758,7 +909,8 @@ export default function App() {
               return {
                 ...e,
                 animated: false,
-                style: { stroke: 'rgba(255, 255, 255, 0.05)', strokeWidth: 1 }
+                style: { stroke: 'rgba(255, 255, 255, 0.05)', strokeWidth: 1 },
+                label: undefined
               };
             }
           }
@@ -780,12 +932,32 @@ export default function App() {
               markerEnd: {
                 type: MarkerType.ArrowClosed,
                 color: isSelected ? '#f59e0b' : 'rgba(245, 158, 11, 0.25)'
-              }
+              },
+              labelStyle: {
+                fill: isSelected ? '#fde68a' : '#fbbf24',
+                fontWeight: 600,
+                fontSize: 11,
+                fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", monospace'
+              },
+              labelBgStyle: {
+                fill: '#1c1c1e',
+                fillOpacity: 0.94,
+                stroke: isSelected ? '#f59e0b' : 'rgba(245, 158, 11, 0.35)',
+                strokeWidth: 1
+              },
+              labelBgPadding: DEFAULT_EDGE_LABEL_PADDING,
+              labelBgBorderRadius: DEFAULT_EDGE_LABEL_BORDER_RADIUS
             };
           }
         }
 
-        return e;
+        return {
+          ...e,
+          labelStyle: DEFAULT_EDGE_LABEL_STYLE,
+          labelBgStyle: DEFAULT_EDGE_LABEL_BG_STYLE,
+          labelBgPadding: DEFAULT_EDGE_LABEL_PADDING,
+          labelBgBorderRadius: DEFAULT_EDGE_LABEL_BORDER_RADIUS
+        };
       });
     }
 
@@ -831,7 +1003,21 @@ export default function App() {
             type: MarkerType.ArrowClosed,
             color: heatmapColor,
           },
-          label: fullLabel || undefined
+          label: fullLabel || undefined,
+          labelStyle: {
+            fill: '#ffffff',
+            fontWeight: 700,
+            fontSize: 12,
+            fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", monospace'
+          },
+          labelBgStyle: {
+            fill: '#18181b',
+            fillOpacity: 0.96,
+            stroke: heatmapColor,
+            strokeWidth: 1.5
+          },
+          labelBgPadding: DEFAULT_EDGE_LABEL_PADDING,
+          labelBgBorderRadius: DEFAULT_EDGE_LABEL_BORDER_RADIUS
         };
       } else if (isVisited) {
         return {
@@ -839,14 +1025,42 @@ export default function App() {
           animated: false,
           style: { stroke: heatmapColor, strokeWidth: 2.5 },
           markerEnd: { type: MarkerType.ArrowClosed, color: heatmapColor },
-          label: fullLabel || undefined
+          label: fullLabel || undefined,
+          labelStyle: {
+            fill: '#f4f4f5',
+            fontWeight: 600,
+            fontSize: 11.5,
+            fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", monospace'
+          },
+          labelBgStyle: {
+            fill: '#1c1c1e',
+            fillOpacity: 0.94,
+            stroke: heatmapColor,
+            strokeWidth: 1
+          },
+          labelBgPadding: DEFAULT_EDGE_LABEL_PADDING,
+          labelBgBorderRadius: DEFAULT_EDGE_LABEL_BORDER_RADIUS
         };
       } else {
         return {
           ...e,
           animated: false,
           style: { stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1.5, strokeDasharray: '4 4' },
-          markerEnd: { type: MarkerType.ArrowClosed, color: 'rgba(255,255,255,0.1)' }
+          markerEnd: { type: MarkerType.ArrowClosed, color: 'rgba(255,255,255,0.1)' },
+          labelStyle: {
+            fill: 'rgba(255, 255, 255, 0.4)',
+            fontWeight: 500,
+            fontSize: 10.5,
+            fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", monospace'
+          },
+          labelBgStyle: {
+            fill: '#141416',
+            fillOpacity: 0.8,
+            stroke: 'rgba(255, 255, 255, 0.08)',
+            strokeWidth: 0.5
+          },
+          labelBgPadding: [6, 4],
+          labelBgBorderRadius: 5
         };
       }
     });
@@ -926,7 +1140,11 @@ export default function App() {
           contract: inferred.contract,
           perfMeta: inferred.perfMeta
         },
-        label: inferred.contract?.payloadType
+        label: inferred.contract?.payloadType,
+        labelStyle: DEFAULT_EDGE_LABEL_STYLE,
+        labelBgStyle: DEFAULT_EDGE_LABEL_BG_STYLE,
+        labelBgPadding: DEFAULT_EDGE_LABEL_PADDING,
+        labelBgBorderRadius: DEFAULT_EDGE_LABEL_BORDER_RADIUS
       };
       setEdges((eds) => addEdge(newEdge, eds));
       setGuardrailAlert(null);
@@ -982,7 +1200,11 @@ export default function App() {
                 contract: inferred.contract,
                 perfMeta: inferred.perfMeta
               },
-              label: inferred.contract?.payloadType
+              label: inferred.contract?.payloadType,
+              labelStyle: DEFAULT_EDGE_LABEL_STYLE,
+              labelBgStyle: DEFAULT_EDGE_LABEL_BG_STYLE,
+              labelBgPadding: DEFAULT_EDGE_LABEL_PADDING,
+              labelBgBorderRadius: DEFAULT_EDGE_LABEL_BORDER_RADIUS
             };
           }
           return e;
@@ -1034,7 +1256,11 @@ export default function App() {
                 contract: inferred.contract,
                 perfMeta: inferred.perfMeta
               },
-              label: inferred.contract?.payloadType
+              label: inferred.contract?.payloadType,
+              labelStyle: DEFAULT_EDGE_LABEL_STYLE,
+              labelBgStyle: DEFAULT_EDGE_LABEL_BG_STYLE,
+              labelBgPadding: DEFAULT_EDGE_LABEL_PADDING,
+              labelBgBorderRadius: DEFAULT_EDGE_LABEL_BORDER_RADIUS
             };
             setSelectedElement(updated);
             return updated;
@@ -1105,10 +1331,10 @@ export default function App() {
 
       if (newLevel === 'L1') {
         if (parentId) return expandedCompoundIds.has(parentId);
-        return nodeLevel === 'L1_SCREEN';
+        return nodeLevel === 'L1_SCREEN' || nodeLevel === 'L1_SYSTEM' || !nodeLevel;
       }
       if (newLevel === 'L2') {
-        if (nodeLevel === 'L3_PRIMITIVE') return false;
+        if (nodeLevel === 'L3_PRIMITIVE' || nodeLevel === 'L3_EXECUTION') return false;
         return true;
       }
       return true;
@@ -1426,134 +1652,184 @@ export default function App() {
   }, [nodes, edges, metadata]);
 
   return (
-    <div className="saag-app">
-      <Toolbar
-        metadata={metadata}
-        nodeCount={nodes.length}
-        edgeCount={edges.length}
-        onAutoLayout={handleAutoLayout}
-        onRearrangeAndPack={handleRearrangeAndPack}
-        onSave={handleSave}
-        onOpenSimulation={() => setIsSimModalOpen(true)}
-        isSaving={isSaving}
-        isConnected={isConnected}
-        agentNodeCount={agentNodeIds.length}
-        onOpenAgentContext={handleOpenAgentContext}
-        onClearAgentContext={handleClearAgentContext}
+    <div className="saag-app-layout">
+      <LeftSidebar
+        isOpen={isLeftSidebarOpen}
+        onToggle={() => setIsLeftSidebarOpen((prev) => !prev)}
         projects={projects}
         activeProjectId={activeProjectId}
         onSwitchProject={handleSwitchProject}
-        abstractionLevel={abstractionLevel}
-        onLevelChange={handleLevelChange}
-        visibleNodeCount={displayNodes.length}
-        totalNodeCount={nodes.length}
+        currentDomain={currentDomain}
+        onSwitchDomain={handleSwitchDomain}
+        mlConstraintData={mlConstraintData}
+        onOpenMlDiagnostics={() => {
+          if (mlConstraintData) {
+            alert(`🧠 ML Systems & Hardware Analysis:\n\n${mlConstraintData.summary}\n\nIssues (${mlConstraintData.issues.length}):\n${mlConstraintData.issues.map(i => `• [${i.severity.toUpperCase()}] ${i.title}: ${i.message}`).join('\n') || 'All hardware and VRAM constraints satisfied.'}`);
+          }
+        }}
+        isTreeNavigatorOpen={isTreeNavigatorOpen}
+        onToggleTreeNavigator={() => setIsTreeNavigatorOpen((prev) => !prev)}
+        onOpenSimulation={() => setIsSimModalOpen(true)}
         bottleneckCount={bottleneckData.bottlenecks?.length || 0}
         isBottleneckLensActive={isBottleneckLensActive}
         onToggleBottleneckLens={handleToggleBottleneckLens}
         onOpenBottlenecks={handleOpenBottlenecks}
-        layoutMode={layoutMode}
-        onLayoutModeChange={(mode) => {
-          setLayoutMode(mode);
-          if (mode === 'tree' && treeData) {
-            const adaptivePositions = computeAdaptiveTreeLayout(displayNodes, treeData, rawGraphRef.current);
-            setNodes((nds) =>
-              nds.map((node) => {
-                const pos = adaptivePositions[node.id] || treeData.treePositions?.[node.id] || node.position;
-                return {
-                  ...node,
-                  position: pos,
-                  data: {
-                    ...node.data,
-                    canvasMeta: {
-                      ...node.data?.canvasMeta,
-                      position: pos,
-                    }
-                  }
-                };
-              })
-            );
-            if (reactFlowInstanceRef.current) {
-              setTimeout(() => {
-                reactFlowInstanceRef.current?.fitView({ padding: 0.25, duration: 450 });
-              }, 50);
-            }
-          }
-        }}
-        branches={treeData?.branches || []}
-        activeBranchId={activeBranchId}
-        onSelectBranch={setActiveBranchId}
-        isTreeNavigatorOpen={isTreeNavigatorOpen}
-        onToggleTreeNavigator={() => setIsTreeNavigatorOpen((prev) => !prev)}
+        agentNodeCount={agentNodeIds.length}
+        onOpenAgentContext={handleOpenAgentContext}
+        onAutoLayout={handleAutoLayout}
+        onRearrangeAndPack={handleRearrangeAndPack}
+        onSave={handleSave}
+        isSaving={isSaving}
+        isConnected={isConnected}
+        metadata={metadata}
       />
 
-      {/* Floating Canvas Tab / Branch Switcher Filter Bar */}
-      {layoutMode === 'tree' && treeData?.branches?.length > 0 && (
-        <div className="canvas-tab-floating-bar glass-panel">
-          <button
-            className={`tab-pill ${activeBranchId === 'all' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveBranchId('all');
-              setTimeout(() => reactFlowInstanceRef.current?.fitView({ padding: 0.25, duration: 350 }), 50);
-            }}
-          >
-            <span className="tab-pill-icon">🌐</span>
-            <span>All Tabs ({treeData.branches.reduce((acc, b) => acc + b.nodes.length, 0)})</span>
-          </button>
-          {treeData.branches.map((b) => (
-            <button
-              key={b.id}
-              className={`tab-pill ${activeBranchId === b.id ? 'active' : ''}`}
-              onClick={() => {
-                setActiveBranchId(b.id);
-                setTimeout(() => reactFlowInstanceRef.current?.fitView({ padding: 0.25, duration: 350 }), 50);
-              }}
-            >
-              <span className="tab-pill-icon">{b.icon || '📱'}</span>
-              <span>{b.title}</span>
-              <span className="tab-pill-count">{b.nodes.length}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      <ReactFlow
-        onInit={(instance) => { reactFlowInstanceRef.current = instance; }}
-        nodes={displayNodes}
-        edges={displayEdges}
-        nodeTypes={nodeTypes}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onNodeDragStop={handleNodeDragStop}
-        onConnect={onConnect}
-        onReconnect={onReconnect}
-        isValidConnection={isValidConnection}
-        edgesReconnectable={true}
-        onNodeClick={onNodeClick}
-        onEdgeClick={onEdgeClick}
-        onPaneClick={onPaneClick}
-        fitView
-        fitViewOptions={{ padding: 0.3 }}
-        minZoom={0.2}
-        maxZoom={2}
-      >
-        <Background color="#1e293b" gap={24} size={1.5} />
-        <Controls style={{ bottom: simulation ? 160 : 20, left: 20, borderRadius: 8, overflow: 'hidden' }} />
-        <MiniMap
-          style={{
-            bottom: simulation ? 160 : 20,
-            right: selectedElement ? 390 : 20,
-            borderRadius: 8,
-            overflow: 'hidden'
+      <div className="saag-main-content">
+        <Toolbar
+          metadata={metadata}
+          nodeCount={nodes.length}
+          edgeCount={edges.length}
+          onAutoLayout={handleAutoLayout}
+          onRearrangeAndPack={handleRearrangeAndPack}
+          onSave={handleSave}
+          onOpenSimulation={() => setIsSimModalOpen(true)}
+          isSaving={isSaving}
+          isConnected={isConnected}
+          agentNodeCount={agentNodeIds.length}
+          onOpenAgentContext={handleOpenAgentContext}
+          onClearAgentContext={handleClearAgentContext}
+          projects={projects}
+          activeProjectId={activeProjectId}
+          onSwitchProject={handleSwitchProject}
+          abstractionLevel={abstractionLevel}
+          onLevelChange={handleLevelChange}
+          visibleNodeCount={displayNodes.length}
+          totalNodeCount={nodes.length}
+          bottleneckCount={bottleneckData.bottlenecks?.length || 0}
+          isBottleneckLensActive={isBottleneckLensActive}
+          onToggleBottleneckLens={handleToggleBottleneckLens}
+          onOpenBottlenecks={handleOpenBottlenecks}
+          layoutMode={layoutMode}
+          onLayoutModeChange={(mode) => {
+            setLayoutMode(mode);
+            if (mode === 'tree' && treeData) {
+              const adaptivePositions = computeAdaptiveTreeLayout(displayNodes, treeData, rawGraphRef.current);
+              setNodes((nds) =>
+                nds.map((node) => {
+                  const pos = adaptivePositions[node.id] || treeData.treePositions?.[node.id] || node.position;
+                  return {
+                    ...node,
+                    position: pos,
+                    data: {
+                      ...node.data,
+                      canvasMeta: {
+                        ...node.data?.canvasMeta,
+                        position: pos,
+                      }
+                    }
+                  };
+                })
+              );
+              if (reactFlowInstanceRef.current) {
+                setTimeout(() => {
+                  reactFlowInstanceRef.current?.fitView({ padding: 0.25, duration: 450 });
+                }, 50);
+              }
+            }
           }}
-          nodeColor={(n) => {
-            if (n.data?.kind === 'view') return '#a855f7';
-            if (n.data?.kind === 'viewModel') return '#3b82f6';
-            if (n.data?.kind === 'service') return '#10b981';
-            return '#f59e0b';
+          branches={treeData?.branches || []}
+          activeBranchId={activeBranchId}
+          onSelectBranch={setActiveBranchId}
+          isTreeNavigatorOpen={isTreeNavigatorOpen}
+          onToggleTreeNavigator={() => setIsTreeNavigatorOpen((prev) => !prev)}
+          currentDomain={currentDomain}
+          onSwitchDomain={handleSwitchDomain}
+          mlConstraintData={mlConstraintData}
+          onOpenMlDiagnostics={() => {
+            if (mlConstraintData) {
+              alert(`🧠 ML Systems & Hardware Analysis:\n\n${mlConstraintData.summary}\n\nIssues (${mlConstraintData.issues.length}):\n${mlConstraintData.issues.map(i => `• [${i.severity.toUpperCase()}] ${i.title}: ${i.message}`).join('\n') || 'All hardware and VRAM constraints satisfied.'}`);
+            }
           }}
-          maskColor="rgba(9, 13, 22, 0.85)"
+          isLeftSidebarOpen={isLeftSidebarOpen}
+          onToggleLeftSidebar={() => setIsLeftSidebarOpen((prev) => !prev)}
+          onOpenAddModal={() => setIsAddModalOpen(true)}
         />
-      </ReactFlow>
+
+        <div className="saag-canvas-wrapper">
+          {/* Floating Canvas Tab / Branch Switcher Filter Bar */}
+          {layoutMode === 'tree' && treeData?.branches?.length > 0 && (
+            <div className="canvas-tab-floating-bar glass-panel">
+              <button
+                className={`tab-pill ${activeBranchId === 'all' ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveBranchId('all');
+                  setTimeout(() => reactFlowInstanceRef.current?.fitView({ padding: 0.25, duration: 350 }), 50);
+                }}
+              >
+                <span className="tab-pill-icon">🌐</span>
+                <span>All Tabs ({treeData.branches.reduce((acc, b) => acc + b.nodes.length, 0)})</span>
+              </button>
+              {treeData.branches.map((b) => (
+                <button
+                  key={b.id}
+                  className={`tab-pill ${activeBranchId === b.id ? 'active' : ''}`}
+                  onClick={() => {
+                    setActiveBranchId(b.id);
+                    setTimeout(() => reactFlowInstanceRef.current?.fitView({ padding: 0.25, duration: 350 }), 50);
+                  }}
+                >
+                  <span className="tab-pill-icon">{b.icon || '📱'}</span>
+                  <span>{b.title}</span>
+                  <span className="tab-pill-count">{b.nodes.length}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <ReactFlow
+            onInit={(instance) => { reactFlowInstanceRef.current = instance; }}
+            nodes={displayNodes}
+            edges={displayEdges}
+            nodeTypes={nodeTypes}
+            defaultEdgeOptions={defaultEdgeOptions}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onNodeDragStop={handleNodeDragStop}
+            onConnect={onConnect}
+            onReconnect={onReconnect}
+            isValidConnection={isValidConnection}
+            edgesReconnectable={true}
+            onNodeClick={onNodeClick}
+            onEdgeClick={onEdgeClick}
+            onPaneClick={onPaneClick}
+            fitView
+            fitViewOptions={{ padding: 0.3 }}
+            minZoom={0.2}
+            maxZoom={2}
+          >
+            <Background color="rgba(255, 255, 255, 0.08)" gap={24} size={1} />
+            <Controls style={{ bottom: simulation ? 160 : 20, left: 20 }} />
+            <MiniMap
+              style={{
+                bottom: simulation ? 160 : 20,
+                right: selectedElement ? 390 : 20
+              }}
+              nodeColor={(n) => {
+                if (n.data?.kind === 'hardware') return '#34d399';
+                if (n.data?.kind === 'model') return '#ff375f';
+                if (n.data?.kind === 'agent') return '#bf5af2';
+                if (n.data?.kind === 'tool') return '#64d2ff';
+                if (n.data?.kind === 'gate') return '#ff9f0a';
+                if (n.data?.kind === 'view') return '#a855f7';
+                if (n.data?.kind === 'viewModel') return '#0a84ff';
+                if (n.data?.kind === 'service') return '#30d158';
+                return '#f59e0b';
+              }}
+              maskColor="rgba(22, 22, 24, 0.78)"
+            />
+          </ReactFlow>
+        </div>
+      </div>
 
       <InspectorSidebar
         selectedElement={selectedElement}
@@ -1568,6 +1844,7 @@ export default function App() {
         onOpenServicePreview={handleOpenServicePreview}
         agentNodeIds={agentNodeIds}
         onToggleAgentNode={handleToggleAgentNode}
+        onNavigateCrossReference={handleNavigateCrossReference}
       />
 
       <EdgeGuardrailToast

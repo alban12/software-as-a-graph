@@ -9,7 +9,8 @@ import {
   getNodeDimensions,
   detectCollisions,
   rearrangeNodes,
-  computeAdaptiveTreeLayout
+  computeAdaptiveTreeLayout,
+  isSystemDesignNode
 } from '../src/analysis/treeEngine.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -135,6 +136,91 @@ test.describe('App Tree Decomposition & Dynamic Layout Engine', () => {
         collisions,
         [],
         `Benchmark ${b.name} must have 0 collisions in full tree positions`
+      );
+    }
+  });
+
+  test('isSystemDesignNode: Filters Xcode test runners, drawing math, and leaf micro-widgets', () => {
+    // Should remove test suites
+    assert.strictEqual(isSystemDesignNode({ name: 'LandmarksTests' }), false);
+    assert.strictEqual(isSystemDesignNode({ name: 'MacLandmarksUITestsLaunchTests' }), false);
+    assert.strictEqual(isSystemDesignNode({ name: 'AuthSampleTests' }), false);
+
+    // Should remove drawing/vector math helpers
+    assert.strictEqual(isSystemDesignNode({ name: 'BadgeBackground' }), false);
+    assert.strictEqual(isSystemDesignNode({ name: 'HexagonParameters' }), false);
+    assert.strictEqual(isSystemDesignNode({ name: 'Coordinates' }), false);
+    assert.strictEqual(isSystemDesignNode({ name: 'GraphCapsule' }), false);
+    assert.strictEqual(isSystemDesignNode({ name: 'TextOverlay' }), false);
+
+    // Should remove SwiftUI environment keys and command glue
+    assert.strictEqual(isSystemDesignNode({ name: 'SelectedLandmarkKey' }), false);
+    assert.strictEqual(isSystemDesignNode({ name: 'LandmarkCommands' }), false);
+    assert.strictEqual(isSystemDesignNode({ name: 'Observation' }), false);
+
+    // Should remove leaf micro-widgets
+    assert.strictEqual(isSystemDesignNode({ name: 'CircleImage' }), false);
+    assert.strictEqual(isSystemDesignNode({ name: 'FavoriteButton' }), false);
+    assert.strictEqual(isSystemDesignNode({ name: 'PageControl' }), false);
+    assert.strictEqual(isSystemDesignNode({ name: 'CategoryItem' }), false);
+
+    // Should preserve core system architecture components
+    assert.strictEqual(isSystemDesignNode({ name: 'LandmarksApp' }), true);
+    assert.strictEqual(isSystemDesignNode({ name: 'ContentView' }), true);
+    assert.strictEqual(isSystemDesignNode({ name: 'CategoryHome' }), true);
+    assert.strictEqual(isSystemDesignNode({ name: 'LandmarkList' }), true);
+    assert.strictEqual(isSystemDesignNode({ name: 'LandmarkDetail' }), true);
+    assert.strictEqual(isSystemDesignNode({ name: 'ModelData' }), true);
+    assert.strictEqual(isSystemDesignNode({ name: 'ProfileHost' }), true);
+    assert.strictEqual(isSystemDesignNode({ name: 'AuthViewModel' }), true);
+    assert.strictEqual(isSystemDesignNode({ name: 'KeychainStorage' }), true);
+  });
+
+  test('Vertical Top-to-Bottom Flow: rootAppNode.y < containerNode.y < branchRoots.y', () => {
+    const tree = decomposeAppTree(landmarksGraph);
+    const rootPos = tree.treePositions[tree.rootAppNode.id];
+    const containerPos = tree.treePositions[tree.containerNode.id];
+
+    assert.ok(rootPos, 'Root position exists');
+    assert.ok(containerPos, 'Container position exists');
+
+    // Root App must be at top (y = 40)
+    assert.strictEqual(rootPos.y, 40, 'Root App starts at the top (y = 40)');
+
+    // Container directly beneath root
+    assert.ok(containerPos.y > rootPos.y, `Container (${containerPos.y}) must be below Root App (${rootPos.y})`);
+
+    // All primary tab branch roots must be below the container
+    tree.branches.forEach((branch) => {
+      const firstNode = branch.nodes[0]?.node;
+      if (firstNode) {
+        const branchPos = tree.treePositions[firstNode.id];
+        assert.ok(
+          branchPos.y > containerPos.y,
+          `Branch ${branch.title} root (${branchPos.y}) must be below Container (${containerPos.y})`
+        );
+      }
+    });
+  });
+
+  test('computeAdaptiveTreeLayout preserves Top-to-Bottom vertical flow', () => {
+    const tree = decomposeAppTree(landmarksGraph);
+    const l1Nodes = Object.values(landmarksGraph.nodes).filter(
+      (n) => n.level === 'L1_SCREEN' && isSystemDesignNode(n)
+    );
+    const positions = computeAdaptiveTreeLayout(l1Nodes, tree, landmarksGraph);
+
+    const rootY = positions[tree.rootAppNode.id]?.y;
+    const containerY = positions[tree.containerNode.id]?.y;
+
+    assert.strictEqual(rootY, 40, 'Root node at top (y = 40)');
+    assert.ok(containerY > rootY, 'Container below root node');
+
+    const featuredBranchRoot = tree.branches.find((b) => b.title === 'Featured')?.nodes[0]?.node;
+    if (featuredBranchRoot && positions[featuredBranchRoot.id]) {
+      assert.ok(
+        positions[featuredBranchRoot.id].y > containerY,
+        'Featured branch root must cascade below container node'
       );
     }
   });
