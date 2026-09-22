@@ -28,6 +28,8 @@ import BottleneckDrawer from './components/BottleneckDrawer';
 import AppTreeNavigator from './components/AppTreeNavigator';
 import { analyzeBottlenecks } from './analysis/bottleneckEngine';
 import { decomposeAppTree, getNodeDimensions, rearrangeNodes, detectCollisions, computeAdaptiveTreeLayout, isSystemDesignNode } from './analysis/treeEngine';
+import { computeTemporalPipelineLayout } from './analysis/pipelineEngine';
+import { computeMeshForceLayout } from './analysis/meshEngine';
 import { analyzeMlConstraints } from './analysis/mlConstraintEngine';
 import { parseSaagUri } from './utils/crossReferences';
 import { generateScopeContract } from './utils/scopeContract';
@@ -184,8 +186,9 @@ export default function App() {
     setIsBottleneckDrawerOpen(true);
   }, []);
 
-  // Layout Mode & Tab-as-a-Branch Tree View
-  const [layoutMode, setLayoutMode] = useState('tree'); // 'tree' | 'pipeline'
+  // Layout Mode & Tab-as-a-Branch Tree View (3 Fluid Lenses: Tree, Pipeline, Mesh)
+  const [layoutMode, setLayoutMode] = useState('tree'); // 'tree' | 'pipeline' | 'mesh'
+  const meshPositionsRef = useRef({});
   const [activeBranchId, setActiveBranchId] = useState('all');
   const [isTreeNavigatorOpen, setIsTreeNavigatorOpen] = useState(false);
   const reactFlowInstanceRef = useRef(null);
@@ -430,7 +433,7 @@ export default function App() {
     // Filter visible nodes based on active abstraction level and layout mode
     const rawNodes = saagGraph.nodes;
     const initialVisible = Object.values(rawNodes).filter((n) => {
-      if (layoutMode === 'tree' && !isSystemDesignNode(n)) return false;
+      if (!isSystemDesignNode(n)) return false;
       if (currentLevel === 'L1') {
         return n.level === 'L1_SCREEN' || n.level === 'L1_SYSTEM' || !n.level;
       }
@@ -446,8 +449,18 @@ export default function App() {
       : {};
     const fullTreePositions = tree?.treePositions || {};
 
+    // Seed meshPositionsRef with saved positions from graph JSON (or algorithmic fallbacks)
+    const initialMesh = {};
+    Object.values(saagGraph.nodes).forEach((node) => {
+      const fallbackPos = (isIosProject && adaptivePositions[node.id]) || fullTreePositions[node.id] || { x: 100, y: 100 };
+      initialMesh[node.id] = node.canvasMeta?.position || fallbackPos;
+    });
+    meshPositionsRef.current = initialMesh;
+
     const rfNodes = Object.values(saagGraph.nodes).map((node) => {
-      const computedPos = (isIosProject && adaptivePositions[node.id]) || fullTreePositions[node.id] || node.canvasMeta?.position || { x: 100, y: 100 };
+      const computedPos = layoutMode === 'mesh'
+        ? (meshPositionsRef.current[node.id] || { x: 100, y: 100 })
+        : ((isIosProject && adaptivePositions[node.id]) || fullTreePositions[node.id] || node.canvasMeta?.position || { x: 100, y: 100 });
       return {
         id: node.id,
         type: 'saagNode',
@@ -659,10 +672,8 @@ export default function App() {
       const nodeLevel = n.data?.level || rawNodes[n.id]?.level || 'L1_SCREEN';
       const parentId = n.data?.parentId || rawNodes[n.id]?.parentId;
 
-      // In Tree View mode, filter out non-architectural noise (abstract away what an LLM handles)
-      if (layoutMode === 'tree') {
-        if (!isSystemDesignNode(n)) return false;
-      }
+      // Filter out non-architectural noise (abstract away what an LLM handles: tests, drawing helpers)
+      if (!isSystemDesignNode(n)) return false;
 
       if (abstractionLevel === 'L1') {
         // If node is a nested child of a compound screen:
@@ -1340,169 +1351,10 @@ export default function App() {
       return true;
     });
 
-    if (layoutMode === 'tree' && treeData) {
-      const adaptivePositions = computeAdaptiveTreeLayout(visibleUnderNewLevel, treeData, rawGraphRef.current);
-      setNodes((nds) =>
-        nds.map((node) => {
-          const pos = adaptivePositions[node.id] || treeData.treePositions?.[node.id] || node.position;
-          return {
-            ...node,
-            position: pos,
-            data: {
-              ...node.data,
-              canvasMeta: {
-                ...node.data?.canvasMeta,
-                position: pos,
-              }
-            }
-          };
-        })
-      );
-    }
-
-    if (reactFlowInstanceRef.current) {
-      setTimeout(() => {
-        reactFlowInstanceRef.current?.fitView({ padding: 0.25, duration: 450 });
-      }, 50);
-    }
-  }, [nodes, treeData, layoutMode, expandedCompoundIds, setNodes]);
-
-  // Auto Layout: Tree View (Tab Branches) & Sequential Pipeline Modes with Dynamic Spacing & Overlap Elimination
-  const handleAutoLayout = useCallback(() => {
-    // 1. Tab-as-a-Branch Tree Layout
-    if (layoutMode === 'tree' && treeData) {
-      const adaptivePositions = computeAdaptiveTreeLayout(displayNodes, treeData, rawGraphRef.current);
-      const fullTreePositions = treeData.treePositions || {};
-
-      setNodes((nds) =>
-        nds.map((node) => {
-          const pos = adaptivePositions[node.id] || fullTreePositions[node.id] || node.position;
-          return {
-            ...node,
-            position: pos,
-            data: {
-              ...node.data,
-              canvasMeta: {
-                ...node.data?.canvasMeta,
-                position: pos,
-              }
-            }
-          };
-        })
-      );
-
-      if (reactFlowInstanceRef.current) {
-        setTimeout(() => {
-          reactFlowInstanceRef.current?.fitView({ padding: 0.25, duration: 450 });
-        }, 50);
-      }
-      return;
-    }
-
-    // 2. Sequential Pipeline Stages:
-    const stageByNodeId = {};
-    nodes.forEach((node) => {
-      const name = node.data?.name || '';
-      const kind = node.data?.kind || '';
-      if (name.endsWith('App')) {
-        stageByNodeId[node.id] = 0; // Stage 0: App Entry
-      } else if (name === 'ContentView' || name === 'RootView') {
-        stageByNodeId[node.id] = 1; // Stage 1: Main Tab / Navigation Hub
-      } else if (kind === 'viewModel' || name.endsWith('Home') || name.endsWith('List') || name === 'LoginView' || name === 'RemindersListView') {
-        stageByNodeId[node.id] = 2; // Stage 2: Central State Store & Primary Screens
-      } else if (name.endsWith('Detail') || name.endsWith('Host') || name.endsWith('Details') || name.includes('Approval')) {
-        stageByNodeId[node.id] = 3; // Stage 3: Detail Views & Sheets
-      } else if (name === 'Badge' || name === 'HikeView') {
-        stageByNodeId[node.id] = 4; // Stage 4: Reusable Compound Widgets
-      } else if (name.includes('Test')) {
-        stageByNodeId[node.id] = 6;
-      } else if (kind === 'repository' || name.includes('Storage')) {
-        stageByNodeId[node.id] = 5;
-      } else if (kind === 'service') {
-        stageByNodeId[node.id] = 4;
-      } else {
-        stageByNodeId[node.id] = 3;
-      }
-    });
-
-    const xByStage = {
-      0: 60,
-      1: 440,
-      2: 840,
-      3: 1240,
-      4: 1640,
-      5: 2040,
-      6: 2440,
-    };
-
-    const yByStage = {
-      0: 220,
-      1: 220,
-      2: 120,
-      3: 160,
-      4: 160,
-      5: 160,
-      6: 160,
-    };
-
-    const rawNodes = rawGraphRef.current?.nodes || {};
-    const topLevelNodes = nodes
-      .filter((n) => !(n.data?.parentId || rawNodes[n.id]?.parentId))
-      .sort((a, b) => {
-        const stageA = stageByNodeId[a.id] ?? 3;
-        const stageB = stageByNodeId[b.id] ?? 3;
-        if (stageA !== stageB) return stageA - stageB;
-        if (a.data?.kind === 'viewModel') return -1;
-        if (b.data?.kind === 'viewModel') return 1;
-        return (a.data?.name || '').localeCompare(b.data?.name || '');
-      });
-
-    const childNodes = nodes.filter((n) => Boolean(n.data?.parentId || rawNodes[n.id]?.parentId));
-
-    const newPositions = {};
-    topLevelNodes.forEach((node) => {
-      const stage = stageByNodeId[node.id] ?? 3;
-      const x = xByStage[stage] ?? 840;
-      const y = yByStage[stage] ?? 120;
-      newPositions[node.id] = { x, y };
-      const dim = getNodeDimensions(node);
-      yByStage[stage] = y + dim.height + 50; // Dynamic height allocation!
-    });
-
-    // Group child subviews by parentId and position them adjacent to the compound screen container
-    const childrenByParent = {};
-    childNodes.forEach((node) => {
-      const pId = node.data?.parentId || rawNodes[node.id]?.parentId;
-      if (!childrenByParent[pId]) childrenByParent[pId] = [];
-      childrenByParent[pId].push(node);
-    });
-
-    Object.entries(childrenByParent).forEach(([pId, children]) => {
-      const parentPos = newPositions[pId] || { x: 840, y: 120 };
-      const parentDim = getNodeDimensions(nodes.find((n) => n.id === pId) || {});
-      children.forEach((child, idx) => {
-        const col = idx % 2;
-        const row = Math.floor(idx / 2);
-        const childDim = getNodeDimensions(child);
-        newPositions[child.id] = {
-          x: parentPos.x + parentDim.width + 50 + col * (childDim.width + 30),
-          y: parentPos.y + row * (childDim.height + 30)
-        };
-      });
-    });
-
-    // Run dynamic collision resolution to guarantee 100% zero overlap
-    const nodeMap = {};
-    nodes.forEach((n) => { nodeMap[n.id] = n.data || n; });
-    const { positions: resolvedPositions } = rearrangeNodes(newPositions, nodeMap, null, {
-      paddingX: 45,
-      paddingY: 40,
-      maxIterations: 25
-    });
-
+    const newPositions = computePositionsForMode(layoutMode, visibleUnderNewLevel);
     setNodes((nds) =>
       nds.map((node) => {
-        const pos = resolvedPositions[node.id] || newPositions[node.id] || node.position;
+        const pos = newPositions[node.id] || node.position;
         return {
           ...node,
           position: pos,
@@ -1516,7 +1368,67 @@ export default function App() {
         };
       })
     );
-  }, [nodes, setNodes, layoutMode, treeData]);
+
+    if (reactFlowInstanceRef.current) {
+      setTimeout(() => {
+        reactFlowInstanceRef.current?.fitView({ padding: 0.25, duration: 450 });
+      }, 50);
+    }
+  }, [nodes, treeData, layoutMode, expandedCompoundIds, setNodes]);
+
+  // Compute Layout Positions for 3 Fluid Lenses (Tree, Pipeline, Mesh)
+  const computePositionsForMode = useCallback((targetMode, targetNodes) => {
+    if (targetMode === 'mesh') {
+      const positions = {};
+      targetNodes.forEach((n) => {
+        positions[n.id] = meshPositionsRef.current[n.id] || n.position || { x: 100, y: 100 };
+      });
+      return positions;
+    } else if (targetMode === 'tree' && treeData) {
+      const adaptivePositions = computeAdaptiveTreeLayout(targetNodes, treeData, rawGraphRef.current);
+      const fullTreePositions = treeData.treePositions || {};
+      return { ...fullTreePositions, ...adaptivePositions };
+    } else if (targetMode === 'pipeline') {
+      const pipelineRes = computeTemporalPipelineLayout(targetNodes, rawGraphRef.current, { treeData });
+      return pipelineRes.positions || {};
+    }
+    return {};
+  }, [treeData]);
+
+  // Auto Layout: Tree View, Left-to-Right Temporal Pipeline, & Equidistant Force-Directed Mesh
+  const handleAutoLayout = useCallback(() => {
+    let newPositions = {};
+    if (layoutMode === 'mesh') {
+      const meshRes = computeMeshForceLayout(displayNodes, rawGraphRef.current);
+      newPositions = meshRes.positions || {};
+      Object.assign(meshPositionsRef.current, newPositions);
+    } else {
+      newPositions = computePositionsForMode(layoutMode, displayNodes);
+    }
+
+    setNodes((nds) =>
+      nds.map((node) => {
+        const pos = newPositions[node.id] || node.position;
+        return {
+          ...node,
+          position: pos,
+          data: {
+            ...node.data,
+            canvasMeta: {
+              ...node.data?.canvasMeta,
+              position: pos,
+            }
+          }
+        };
+      })
+    );
+
+    if (reactFlowInstanceRef.current) {
+      setTimeout(() => {
+        reactFlowInstanceRef.current?.fitView({ padding: 0.25, duration: 450 });
+      }, 50);
+    }
+  }, [displayNodes, layoutMode, computePositionsForMode, setNodes]);
 
   // Dynamic Live Rearrangement: when dragging a node, push overlapping neighbors aside
   const handleNodeDragStop = useCallback((event, movedNode) => {
@@ -1531,34 +1443,46 @@ export default function App() {
     const collisions = detectCollisions(currentPositions, nodeMap, 30, 30);
     const isMovedColliding = collisions.some((c) => c.idA === movedNode.id || c.idB === movedNode.id);
 
+    let finalPositions = currentPositions;
     if (isMovedColliding) {
       const { positions: rearranged } = rearrangeNodes(currentPositions, nodeMap, movedNode.id, {
         paddingX: 45,
         paddingY: 40,
         maxIterations: 25
       });
-
-      setNodes((nds) =>
-        nds.map((n) => {
-          const newPos = rearranged[n.id];
-          if (newPos && (newPos.x !== n.position.x || newPos.y !== n.position.y)) {
-            return {
-              ...n,
-              position: newPos,
-              data: {
-                ...n.data,
-                canvasMeta: {
-                  ...n.data?.canvasMeta,
-                  position: newPos
-                }
-              }
-            };
-          }
-          return n;
-        })
-      );
+      finalPositions = rearranged;
     }
-  }, [nodes, setNodes]);
+
+    // Record all positions into meshPositionsRef (Mesh acts as custom freeform disposition)
+    Object.entries(finalPositions).forEach(([id, pos]) => {
+      meshPositionsRef.current[id] = pos;
+    });
+
+    // Seamlessly transition to 'mesh' mode (Option 1) if currently viewing Tree or Pipeline
+    if (layoutMode !== 'mesh') {
+      setLayoutMode('mesh');
+    }
+
+    setNodes((nds) =>
+      nds.map((n) => {
+        const newPos = finalPositions[n.id];
+        if (newPos && (newPos.x !== n.position.x || newPos.y !== n.position.y)) {
+          return {
+            ...n,
+            position: newPos,
+            data: {
+              ...n.data,
+              canvasMeta: {
+                ...n.data?.canvasMeta,
+                position: newPos
+              }
+            }
+          };
+        }
+        return n;
+      })
+    );
+  }, [nodes, layoutMode, setNodes]);
 
   // Manual Trigger: Auto-Space & Pack Canvas
   const handleRearrangeAndPack = useCallback(() => {
@@ -1574,6 +1498,8 @@ export default function App() {
       paddingY: 45,
       maxIterations: 35
     });
+
+    Object.assign(meshPositionsRef.current, rearranged);
 
     setNodes((nds) =>
       nds.map((n) => {
@@ -1602,11 +1528,12 @@ export default function App() {
     try {
       const nodesMap = {};
       nodes.forEach((n) => {
+        const posToSave = meshPositionsRef.current[n.id] || n.position;
         nodesMap[n.id] = {
           ...n.data,
           canvasMeta: {
             ...n.data.canvasMeta,
-            position: n.position,
+            position: posToSave,
           }
         };
       });
@@ -1712,29 +1639,27 @@ export default function App() {
           layoutMode={layoutMode}
           onLayoutModeChange={(mode) => {
             setLayoutMode(mode);
-            if (mode === 'tree' && treeData) {
-              const adaptivePositions = computeAdaptiveTreeLayout(displayNodes, treeData, rawGraphRef.current);
-              setNodes((nds) =>
-                nds.map((node) => {
-                  const pos = adaptivePositions[node.id] || treeData.treePositions?.[node.id] || node.position;
-                  return {
-                    ...node,
-                    position: pos,
-                    data: {
-                      ...node.data,
-                      canvasMeta: {
-                        ...node.data?.canvasMeta,
-                        position: pos,
-                      }
+            const newPositions = computePositionsForMode(mode, displayNodes);
+            setNodes((nds) =>
+              nds.map((node) => {
+                const pos = newPositions[node.id] || node.position;
+                return {
+                  ...node,
+                  position: pos,
+                  data: {
+                    ...node.data,
+                    canvasMeta: {
+                      ...node.data?.canvasMeta,
+                      position: pos,
                     }
-                  };
-                })
-              );
-              if (reactFlowInstanceRef.current) {
-                setTimeout(() => {
-                  reactFlowInstanceRef.current?.fitView({ padding: 0.25, duration: 450 });
-                }, 50);
-              }
+                  }
+                };
+              })
+            );
+            if (reactFlowInstanceRef.current) {
+              setTimeout(() => {
+                reactFlowInstanceRef.current?.fitView({ padding: 0.25, duration: 450 });
+              }, 50);
             }
           }}
           branches={treeData?.branches || []}
@@ -1880,6 +1805,7 @@ export default function App() {
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
         simulation={simulation}
+        graph={rawGraph}
       />
 
       <PerformanceProfilingModal

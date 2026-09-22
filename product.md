@@ -56,10 +56,22 @@ Today, these three worlds live in total isolation:
 
 ### 2. Modern 3-Column Studio Layout (Apple HIG / Linear Standard)
 - **Left Navigation Sidebar**: Collapsible via `⌘B` or header controls. Manages workspaces across all 3 domains, houses studio lenses (App Tree Navigator, Dataflow Simulator, Bottlenecks, AI Agent Scope), and provides canvas layout actions (Auto Layout, Auto-Space).
-- **Uncluttered Top Toolbar**: Balanced 3-zone header featuring project breadcrumbs, Abstraction Level selectors (`L1`, `L2`, `L3`), Layout Mode toggles (`Tree View` vs `Pipeline`), node/edge stats, and quick actions.
+- **Uncluttered Top Toolbar**: Balanced 3-zone header featuring project breadcrumbs, Abstraction Level selectors (`L1`, `L2`, `L3`), Fluid Layout Perspective Lens switcher (`[ 🌳 Tree | ⏩ Pipeline | 🕸️ Mesh ]`), node/edge stats, and quick actions.
 - **Right Inspector Sidebar**: Real-time attribute inspector for nodes and edges, displaying typed socket contracts, execution modes, latency, memory allocations, and cross-reference navigation.
 
-### 3. Multi-Scale Abstraction Hierarchy
+### 3. Fluid Multi-Perspective Spatial Lenses (Zero Forced Constraints)
+SaaG rejects rigid, dogmatic representations. A developer or AI agent is never forced into a fixed layout based on their project type. Every system can be projected through three distinct spatial lenses with 1 click:
+1. **🌳 Top $\rightarrow$ Down Tree Lens**:
+   - Ideal for hierarchical containment, navigation stacks, and parent-child composition.
+   - Decomposes the system into Root App $\rightarrow$ Container $\rightarrow$ Tab Branches $\rightarrow$ Leaf Components with an isolated state/service shelf.
+2. **⏩ Left $\rightarrow$ Right Temporal Pipeline Lens**:
+   - Represents causal, chronological execution flow ($T_0 \rightarrow T_k$) where horizontal position strictly reflects topological stage rank.
+   - Computes longest-path topological DAG ranks, arranges parallel swimlanes in Y via barycentric crossing reduction, isolates curved return feedback channels (reactive `@State` bindings), and anchors hardware compute clusters on a dedicated infrastructure shelf.
+3. **🕸️ Equidistant Force-Directed Mesh Lens**:
+   - Ideal for unoriented peer networks, microservices, and state coupling analysis.
+   - Employs Fruchterman-Reingold physical simulation (Hooke edge attraction + Coulomb node repulsion) with hub-and-spoke centering gravity, followed by AABB collision elimination guaranteeing 0 overlaps.
+
+### 4. Multi-Scale Abstraction Hierarchy
 - **Level 1 (`L1 Journey / System`)**: High-level overview showing core user journeys, central state stores, agent orchestrators, or ML cluster topology.
 - **Level 2 (`L2 Components`)**: Reveals container subviews, agent toolsets, data preprocessors, and intermediate stages.
 - **Level 3 (`L3 Details / Execution`)**: Full architectural breakdown including test runners, mathematical rendering utilities, low-level kernels, and optimization passes.

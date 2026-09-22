@@ -1,0 +1,74 @@
+name: SaaG Architectural Verification & Test Suite
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  architectural-linter:
+    name: Verify Clean Architecture & Guardrails
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci || npm install
+
+      - name: Run Canvas & MCP Server Test Suites
+        run: |
+          npm run test:canvas
+          npm run test:mcp
+
+      - name: Build Canvas UI Production Bundle
+        run: npm run canvas:build
+
+      - name: Verify Architecture across all Domain Graphs
+        run: |
+          echo "## 🛡️ SaaG Architectural CI/CD Verification Summary" > saag-report.md
+          echo "" >> saag-report.md
+          echo "| Domain / Project | Result | Errors | Warnings |" >> saag-report.md
+          echo "| :--- | :--- | :--- | :--- |" >> saag-report.md
+
+          for proj in "benchmarks/landmarks-graph.json" "benchmarks/makeitso-graph.json" "examples/ios-auth-sample/.saag/graph.json" "benchmarks/agent-orchestrator-graph.json" "benchmarks/ml-pipeline-graph.json"; do
+            echo "Verifying $proj..."
+            node packages/mcp-server/bin/saag-mcp.js verify --project "$proj" --markdown > /tmp/proj-report.md
+            status=$?
+            if [ $status -eq 0 ]; then
+              echo "| \`$proj\` | ✅ PASSED | 0 | - |" >> saag-report.md
+            else
+              echo "| \`$proj\` | ❌ FAILED | >0 | - |" >> saag-report.md
+            fi
+            echo "<details><summary><b>Detailed Report: $proj</b></summary>" >> saag-report.md
+            echo "" >> saag-report.md
+            cat /tmp/proj-report.md >> saag-report.md
+            echo "" >> saag-report.md
+            echo "</details>" >> saag-report.md
+            echo "" >> saag-report.md
+          done
+
+          cat saag-report.md >> $GITHUB_STEP_SUMMARY
+          cat saag-report.md
+
+      - name: Post Architectural Report to PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('saag-report.md', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: report
+            });

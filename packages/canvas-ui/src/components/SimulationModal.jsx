@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { X, Play, CheckCircle2, AlertTriangle, XCircle, Sparkles } from 'lucide-react';
-import { PRESET_SCENARIOS } from '../simulation/engine';
+import { getScenariosForGraph, executeCustomSimulation } from '../simulation/engine';
 
 export default function SimulationModal({ isOpen, onClose, onStartSimulation, graph }) {
   if (!isOpen) return null;
 
-  const [selectedPreset, setSelectedPreset] = useState(PRESET_SCENARIOS[0].id);
+  const scenarios = useMemo(() => getScenariosForGraph(graph), [graph]);
+  const [selectedPreset, setSelectedPreset] = useState(scenarios[0]?.id || 'happy_path');
   const [activeTab, setActiveTab] = useState('presets'); // 'presets' | 'custom'
 
   const [customNode, setCustomNode] = useState(Object.keys(graph?.nodes || {})[0] || '');
@@ -13,7 +14,7 @@ export default function SimulationModal({ isOpen, onClose, onStartSimulation, gr
 
   const handleRun = () => {
     if (activeTab === 'presets') {
-      const preset = PRESET_SCENARIOS.find(p => p.id === selectedPreset);
+      const preset = scenarios.find(p => p.id === selectedPreset) || scenarios[0];
       if (preset) {
         onStartSimulation(preset.traceGenerator(graph), preset.title);
       }
@@ -23,7 +24,6 @@ export default function SimulationModal({ isOpen, onClose, onStartSimulation, gr
         const node = graph.nodes[customNode];
         const portId = node?.inputs?.[0]?.id || `${customNode}_in`;
         // Execute custom simulation
-        const { executeCustomSimulation } = require('../simulation/engine');
         const trace = executeCustomSimulation(customNode, portId, parsed, graph);
         onStartSimulation(trace, `Custom Test: ${node?.name || customNode}`);
       } catch (err) {
@@ -66,7 +66,7 @@ export default function SimulationModal({ isOpen, onClose, onStartSimulation, gr
 
         {activeTab === 'presets' ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {PRESET_SCENARIOS.map((preset) => {
+            {scenarios.map((preset) => {
               const isSelected = selectedPreset === preset.id;
               return (
                 <div
@@ -83,9 +83,15 @@ export default function SimulationModal({ isOpen, onClose, onStartSimulation, gr
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {preset.id === 'happy_path' && <CheckCircle2 size={15} color="var(--color-success)" />}
-                      {preset.id === 'validation_error' && <AlertTriangle size={15} color="var(--color-repository)" />}
-                      {preset.id === 'auth_error' && <XCircle size={15} color="var(--color-danger)" />}
+                      {preset.id.includes('happy') || preset.id.includes('favorite') || preset.id.includes('create') ? (
+                        <CheckCircle2 size={15} color="var(--color-success)" />
+                      ) : preset.id.includes('validation') || preset.id.includes('profile') || preset.id.includes('nav') ? (
+                        <AlertTriangle size={15} color="var(--color-repository)" />
+                      ) : preset.id.includes('error') ? (
+                        <XCircle size={15} color="var(--color-danger)" />
+                      ) : (
+                        <Sparkles size={15} color="var(--color-accent)" />
+                      )}
                       <span>{preset.title}</span>
                     </div>
                   </div>

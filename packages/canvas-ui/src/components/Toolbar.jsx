@@ -50,32 +50,31 @@ export default function Toolbar({
           <PanelLeft size={16} />
         </button>
 
-        <div className="toolbar-project-tag" title={`Active Project: ${activeProject?.name || activeProjectId}`}>
-          <span className="project-domain-icon">{domainIcons[currentDomain] || '📱'}</span>
-          <span className="project-title-text">{activeProject?.name?.replace(/\s*\(.*\)/, '') || metadata?.projectName || 'Project'}</span>
-          <span className="project-domain-badge">{domainLabels[currentDomain] || 'Workspace'}</span>
+        <div className="project-breadcrumb-pill">
+          <span className="domain-badge-icon">{domainIcons[currentDomain] || '📱'}</span>
+          <span className="project-breadcrumb-name">
+            {activeProject?.name || metadata?.projectName || 'Landmarks'}
+          </span>
+          <span className="scheme-tag">{domainLabels[currentDomain] || 'App'}</span>
         </div>
-      </div>
 
-      {/* Center Section: Core Canvas Switchers (Abstraction Level & Layout Mode) */}
-      <div className="toolbar-center">
-        {/* Multi-Scale Abstraction Level Switcher */}
+        {/* Abstraction Level Selector (L1 / L2 / L3) */}
         <div className="abstraction-level-selector" role="group" aria-label="Abstraction Level">
           <button
             className={`level-segment ${abstractionLevel === 'L1' ? 'active' : ''}`}
             onClick={() => onLevelChange && onLevelChange('L1')}
-            title="L1: High-level system overview & central stores"
+            title="L1: High-level screens, primary navigation, and central architectural components"
           >
-            <span className="level-icon">{currentDomain === 'ios' ? '🏢' : '🌐'}</span>
-            <span>{currentDomain === 'ios' ? 'L1 Journey' : 'L1 System'}</span>
+            <span className="level-icon">🏛️</span>
+            <span>{currentDomain === 'ios' ? 'L1 Journey' : 'L1 Architecture'}</span>
           </button>
           <button
             className={`level-segment ${abstractionLevel === 'L2' ? 'active' : ''}`}
             onClick={() => onLevelChange && onLevelChange('L2')}
-            title="L2 Components: Nested components & processing stages"
+            title="L2: Detailed subviews, compound widgets, and service adapters"
           >
             <span className="level-icon">🧩</span>
-            <span>L2 Components</span>
+            <span>{currentDomain === 'ios' ? 'L2 Components' : 'L2 Pipelines'}</span>
           </button>
           <button
             className={`level-segment ${abstractionLevel === 'L3' ? 'active' : ''}`}
@@ -87,21 +86,28 @@ export default function Toolbar({
           </button>
         </div>
 
-        {/* Layout Mode Switcher: Tree View vs Pipeline */}
-        <div className="layout-mode-selector" role="group" aria-label="Layout Mode">
+        {/* Layout Mode Switcher: 3 Fluid Lenses (Tree, Pipeline, Mesh) */}
+        <div className="layout-mode-selector" role="group" aria-label="Layout Perspective Lens">
           <button
             className={`level-segment ${layoutMode === 'tree' ? 'active' : ''}`}
             onClick={() => onLayoutModeChange && onLayoutModeChange('tree')}
-            title="Tree View: Hierarchy with zero edge crossings"
+            title="Tree View: Hierarchical top-down containment and navigation stacks"
           >
             <span>🌳 Tree</span>
           </button>
           <button
             className={`level-segment ${layoutMode === 'pipeline' ? 'active' : ''}`}
             onClick={() => onLayoutModeChange && onLayoutModeChange('pipeline')}
-            title="Pipeline View: Left-to-right sequential architectural stages"
+            title="Pipeline View: Left-to-right temporal causality and dataflow execution stages"
           >
-            <span>🏢 Pipeline</span>
+            <span>⏩ Pipeline</span>
+          </button>
+          <button
+            className={`level-segment ${layoutMode === 'mesh' ? 'active' : ''}`}
+            onClick={() => onLayoutModeChange && onLayoutModeChange('mesh')}
+            title="Mesh View: Freeform graph layout & custom node disposition"
+          >
+            <span>🕸️ Mesh</span>
           </button>
         </div>
       </div>

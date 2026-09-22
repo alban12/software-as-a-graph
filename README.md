@@ -41,11 +41,54 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift run --packa
   --head examples/ios-auth-sample/.saag/graph.json
 ```
 
-### 4. Run Executable Swift Tests
-```bash
-npm run test:sample
+### 4. Connect AI Coding Agents (Cursor, Claude Code, Windsurf via MCP)
+SaaG includes an official **Model Context Protocol (MCP)** server:
+```json
+{
+  "mcpServers": {
+    "saag": {
+      "command": "node",
+      "args": ["packages/mcp-server/bin/saag-mcp.js"]
+    }
+  }
+}
 ```
-Executes the native Apple Swift Testing suite, including tests auto-generated from visual canvas simulations.
+Exposes tools like `get_architecture_graph`, `get_node_contract`, `validate_architecture`, `simulate_dataflow`, and `apply_architectural_refactor`.
+
+### 5. Headless CI/CD Architectural Verification
+Run SaaG's architectural guardrail linter directly in CI/CD pipelines to block layer violations, retain cycles, and VRAM OOMs:
+```bash
+# Terminal report
+npm run verify -- --project benchmarks/landmarks-graph.json
+
+# Markdown report for GitHub PR bot comments
+npm run verify -- --project auth-sample --markdown
+```
+
+### 6. Fluid 3-Lens Architectural Perspectives
+Switch between three spatial projections with 1 click in the Studio Toolbar or MCP server (`layoutMode`):
+- `🌳 Tree`: Top-to-bottom containment, navigation hierarchy, and component trees.
+- `⏩ Pipeline`: Causal left-to-right flow ($T_0 \rightarrow T_k$) with DAG ranking, barycentric swimlanes, and reactive loopback isolation.
+- `🕸️ Mesh`: Force-directed physical simulation for unoriented peer networks, microservices, and state coupling. Acts as the freeform authored canvas disposition—dragging any node in Tree or Pipeline seamlessly auto-transitions to Mesh without losing manual placements.
+
+### 7. Bidirectional In-Place AST Sync
+Modify UI element labels or controls directly in the Inspector drawer or on canvas device previews. SaaG performs in-place AST line-span reconciliation against native Swift files without clobbering formatting or comments:
+- **`Landmarks`**: Edits in `CategoryHome.swift`, `LandmarkDetail.swift`, etc.
+- **`MakeItSo`**: Edits in `RemindersListView.swift`, `ReminderDetailsView.swift`, etc.
+- **`AuthSample`**: Edits in `LoginView.swift`, etc.
+
+### 8. Multi-Project Simulation & Apple Testing Export
+Launch interactive dataflow simulations across all benchmark applications:
+- **`Landmarks`**: *Toggle Favorite Landmark* (`ModelData` reactive broadcast), *Update User Profile*, and *Category Navigation*.
+- **`MakeItSo`**: *Create & Persist Reminder* (`RemindersRepository` Firestore integration).
+- **`AuthSample`**: *Happy Path*, *Validation Guard Failure*, and *401 Network Failure*.
+- **One-Click Swift Test Generation**: Materialize verified visual traces into standalone Apple `Testing` files (`@Suite`, `@Test`, `#expect`) and save directly into the project's test target.
+
+### 9. Run Executable Test Suites
+```bash
+npm test
+```
+Executes all unit and integration tests across the Swift AST Extractor, Sample App, Canvas UI, and MCP Server.
 
 ---
 

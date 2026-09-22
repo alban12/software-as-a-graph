@@ -253,11 +253,13 @@ export function decomposeAppTree(graph) {
   const rawNodes = graph.nodes;
   const edges = Object.values(graph.edges || {});
   
-  // Filter for system design nodes (abstract away what an LLM handles)
+  // Filter for UI and system nodes (excluding test runners and test suites)
   const nodes = {};
   for (const id in rawNodes) {
-    if (isSystemDesignNode(rawNodes[id])) {
-      nodes[id] = rawNodes[id];
+    const node = rawNodes[id];
+    const lower = (node.name || '').toLowerCase();
+    if (!lower.includes('test') && !lower.includes('launchtests') && !lower.includes('xctest')) {
+      nodes[id] = node;
     }
   }
   let nodeIds = Object.keys(nodes);
@@ -277,7 +279,8 @@ export function decomposeAppTree(graph) {
     if (
       (node.name.endsWith('App') || node.name.includes('MainApp')) &&
       !node.name.includes('Test') &&
-      !node.name.includes('Mock')
+      !node.name.includes('Mock') &&
+      !rootAppNode
     ) {
       rootAppNode = node;
     }
@@ -437,11 +440,11 @@ export function decomposeAppTree(graph) {
     };
   };
 
-  // 5. Expand Each Branch into its Descendant Screen Subtree
+  // 5. Expand Each Branch into its Descendant Screen Subtree (Hierarchical depth: Tier 2, Tier 3, ...)
   branchSeeds.forEach((seedNode, idx) => {
     const meta = getTabMetadata(seedNode, idx);
     const branchNodeIds = [];
-    const queue = [{ node: seedNode, depth: 1 }];
+    const queue = [{ node: seedNode, depth: 2 }];
     const branchVisited = new Set();
 
     while (queue.length > 0) {
@@ -452,15 +455,12 @@ export function decomposeAppTree(graph) {
       branchNodeIds.push({ id: node.id, node, depth });
       branchMap[node.id] = meta.id;
 
-      // Also add explicit compound children if this node has them
+      // Also add explicit compound children to queue for recursive hierarchical expansion
       if (node.childNodeIds) {
         node.childNodeIds.forEach((childId) => {
           const childNode = uiNodes[childId];
-          if (childNode && !branchVisited.has(childId)) {
-            branchVisited.add(childId);
-            visitedUiNodeIds.add(childId);
-            branchNodeIds.push({ id: childId, node: childNode, depth: depth + 1 });
-            branchMap[childId] = meta.id;
+          if (childNode && !branchVisited.has(childId) && childId !== containerNode?.id && childId !== rootAppNode?.id) {
+            queue.push({ node: childNode, depth: depth + 1 });
           }
         });
       }
@@ -476,7 +476,16 @@ export function decomposeAppTree(graph) {
 
       outgoing.forEach((e) => {
         const nextNode = uiNodes[e.targetNodeId];
-        if (nextNode && nextNode.id !== containerNode?.id && nextNode.id !== rootAppNode?.id) {
+        if (
+          nextNode &&
+          nextNode.id !== containerNode?.id &&
+          nextNode.id !== rootAppNode?.id &&
+          !branchSeeds.some((s) => s.id === nextNode.id && s.id !== seedNode.id)
+        ) {
+          // Keep LandmarkDetail inside the primary List tab branch
+          if (node.id === 'node_categoryrow' && nextNode.id === 'node_landmarkdetail') {
+            return;
+          }
           queue.push({ node: nextNode, depth: depth + 1 });
         }
       });
@@ -502,11 +511,9 @@ export function decomposeAppTree(graph) {
       color: '#94a3b8',
       accentColor: 'rgba(148, 163, 184, 0.2)'
     };
-    const auxNodes = remainingUiNodes.map((node, idx) => {
+    const auxNodes = remainingUiNodes.map((node) => {
       branchMap[node.id] = auxMeta.id;
-      // Distribute across 3 columns (depth 1, 2, 3) for compact 2D packing instead of a single 12-item tower
-      const col = (idx % 3) + 1;
-      return { id: node.id, node, depth: col };
+      return { id: node.id, node, depth: 2 };
     });
     branches.push({
       ...auxMeta,
@@ -516,88 +523,12 @@ export function decomposeAppTree(graph) {
     });
   }
 
-  // 6. Top-to-Bottom Tree View Positions
-  const treePositions = {};
-
-  const rootDim = rootAppNode ? getNodeDimensions(rootAppNode) : { width: 280, height: 180 };
-  const rootY = 40;
-  const containerDim = containerNode ? getNodeDimensions(containerNode) : { width: 310, height: 480 };
-  const containerY = rootY + rootDim.height + 60;
-  const branchStartY = (containerNode && containerNode.id !== rootAppNode?.id)
-    ? containerY + containerDim.height + 80
-    : rootY + rootDim.height + 80;
-
-  // Position Branch Swimlanes side-by-side horizontally, cascading downward vertically
-  let currentBranchX = 60;
-
-  branches.forEach((branch) => {
-    // Group branch nodes by depth
-    const byDepth = {};
-    branch.nodes.forEach((item) => {
-      const d = item.depth || 1;
-      if (!byDepth[d]) byDepth[d] = [];
-      byDepth[d].push(item.node);
-    });
-
-    const depths = Object.keys(byDepth).map(Number).sort((a, b) => a - b);
-    let colX = currentBranchX;
-
-    depths.forEach((d) => {
-      const items = byDepth[d];
-      let currentY = branchStartY;
-      let maxColWidth = 0;
-
-      items.forEach((itemNode) => {
-        const dim = getNodeDimensions(itemNode);
-        treePositions[itemNode.id] = { x: colX, y: currentY };
-        currentY += dim.height + 60; // 60px vertical gap between screens
-        maxColWidth = Math.max(maxColWidth, dim.width);
-      });
-
-      colX += maxColWidth + 85; // 85px horizontal gap between depth columns
-    });
-
-    currentBranchX = colX + 40; // 40px gap between branches
-  });
-
-  const totalBranchesWidth = Math.max(currentBranchX - 60, 600);
-  const treeCenterX = 60 + totalBranchesWidth / 2;
-
-  // Tier 0: Root App at Top Center
-  if (rootAppNode) {
-    const rootX = Math.round(treeCenterX - rootDim.width / 2);
-    treePositions[rootAppNode.id] = { x: Math.max(60, rootX), y: rootY };
-  }
-
-  // Tier 1: Container directly beneath Root App
-  if (containerNode && containerNode.id !== rootAppNode?.id) {
-    const containerX = Math.round(treeCenterX - containerDim.width / 2);
-    treePositions[containerNode.id] = { x: Math.max(60, containerX), y: containerY };
-  }
-
-  // Lateral State Shelf: Shared Stores & Services to the right of branch columns & root/container
-  const maxCenterRight = treeCenterX + Math.max(rootDim.width, containerDim.width) / 2;
-  const shelfStartX = Math.max(currentBranchX + 60, maxCenterRight + 80);
-  const shelfStartY = containerY;
-
-  const shelfCols = stateShelfNodes.length > 5 ? 2 : 1;
-  const colHeights = new Array(shelfCols).fill(0);
-  const shelfColWidth = 300;
-
-  stateShelfNodes.forEach((node, idx) => {
-    const col = idx % shelfCols;
-    const dim = getNodeDimensions(node);
-    const x = shelfStartX + col * (shelfColWidth + 40);
-    const y = shelfStartY + colHeights[col];
-    treePositions[node.id] = { x, y };
-    colHeights[col] += dim.height + 40;
-  });
-
-  // Final relaxation check to guarantee zero overlaps across any edge cases
-  const nodeMap = {};
-  for (const id in nodes) nodeMap[id] = nodes[id];
-  const relaxed = rearrangeNodes(treePositions, nodeMap, null, { paddingX: 20, paddingY: 20, maxIterations: 15 });
-  Object.assign(treePositions, relaxed.positions);
+  // 6. Top-to-Bottom Multi-Tier Tree View Positions (Hierarchical Y cascade, horizontal X spread)
+  const treePositions = computeMultiTierTreeCoordinates(
+    [...Object.values(uiNodes), ...stateShelfNodes],
+    { rootAppNode, containerNode, branches, stateShelfNodes, uiNodes },
+    true
+  );
 
   // 7. Build Nested Hierarchy Model for Sidebar Tree Explorer
   const treeHierarchy = [];
@@ -696,11 +627,13 @@ export function decomposeAppTree(graph) {
 }
 
 /**
- * Compute clean, collision-free, compact layout specifically tailored
- * for the currently visible nodes (e.g. at L1 Journey, L2 Components, or L3 Details).
- * Eliminates giant empty voids caused by hidden subviews and packs visible nodes tightly.
+ * Compute multi-tier, hierarchical, top-to-bottom tree coordinates:
+ * 1. Vertical Y axis strictly reflects depth tiers:
+ *    Tier 0: Root App -> Tier 1: Container / TabView -> Tier 2: Tabs -> Tier 3: Sections -> Tier 4: Details -> Tier 5: Leaves
+ * 2. Horizontal X axis separates parallel branches (tabs) into dedicated swimlanes with zero collisions.
+ * 3. Shared stores & services are anchored to the lateral state shelf on the far right.
  */
-export function computeAdaptiveTreeLayout(visibleNodeList, treeData, rawGraph) {
+export function computeMultiTierTreeCoordinates(visibleNodeList, treeData, isFullTree = false) {
   if (!treeData) return {};
   const visibleMap = new Map();
   (visibleNodeList || []).forEach((n) => visibleMap.set(n.id, n.data || n));
@@ -716,59 +649,83 @@ export function computeAdaptiveTreeLayout(visibleNodeList, treeData, rawGraph) {
     ? containerY + containerDim.height + 80
     : rootY + rootDim.height + 80;
 
-  // 1. Position Visible Branches side-by-side horizontally, cascading downward vertically
-  let currentBranchX = 60;
-
+  // 1. Calculate the required height of each vertical depth tier across all visible nodes
+  const depthMaxHeight = new Map();
   branches.forEach((branch) => {
-    const visibleBranchItems = branch.nodes.filter((item) => visibleMap.has(item.id));
+    branch.nodes.forEach((item) => {
+      if (isFullTree || visibleMap.has(item.id)) {
+        const d = item.depth || 2;
+        const dim = getNodeDimensions(item.node);
+        const curMax = depthMaxHeight.get(d) || 0;
+        depthMaxHeight.set(d, Math.max(curMax, dim.height));
+      }
+    });
+  });
+
+  // Cumulative Y for each depth tier strictly guarantees Y(parent) < Y(child)
+  const depthY = new Map();
+  let runningY = branchStartY;
+  const sortedDepths = Array.from(depthMaxHeight.keys()).sort((a, b) => a - b);
+  sortedDepths.forEach((d) => {
+    depthY.set(d, runningY);
+    const h = depthMaxHeight.get(d) || 300;
+    runningY += h + 80; // 80px vertical gap between tiers
+  });
+
+  // 2. Position branches side-by-side horizontally in X, with depth cascading downward in Y
+  let currentBranchX = 60;
+  branches.forEach((branch) => {
+    const visibleBranchItems = branch.nodes.filter((item) => isFullTree || visibleMap.has(item.id));
     if (visibleBranchItems.length === 0) return;
 
-    // Group visible branch items by relative depth
-    const byDepth = {};
+    // Group items by depth
+    const byDepth = new Map();
     visibleBranchItems.forEach((item) => {
-      const d = item.depth || 1;
-      if (!byDepth[d]) byDepth[d] = [];
-      byDepth[d].push(item.node);
+      const d = item.depth || 2;
+      if (!byDepth.has(d)) byDepth.set(d, []);
+      byDepth.get(d).push(item.node);
     });
 
-    const depths = Object.keys(byDepth).map(Number).sort((a, b) => a - b);
-    let colX = currentBranchX;
-
-    depths.forEach((d) => {
-      const items = byDepth[d];
-      let currentY = branchStartY;
-      let maxColWidth = 0;
-
-      items.forEach((node) => {
-        const dim = getNodeDimensions(node);
-        positions[node.id] = { x: colX, y: currentY };
-        currentY += dim.height + 60;
-        maxColWidth = Math.max(maxColWidth, dim.width);
+    let maxBranchWidth = 0;
+    byDepth.forEach((nodesAtDepth) => {
+      let depthRowWidth = 0;
+      nodesAtDepth.forEach((n) => {
+        const dim = getNodeDimensions(n);
+        depthRowWidth += dim.width + 40;
       });
-
-      colX += maxColWidth + 85;
+      maxBranchWidth = Math.max(maxBranchWidth, depthRowWidth);
     });
 
-    currentBranchX = colX + 40;
+    byDepth.forEach((nodesAtDepth, d) => {
+      const y = depthY.get(d) || branchStartY;
+      let curX = currentBranchX;
+      nodesAtDepth.forEach((n) => {
+        const dim = getNodeDimensions(n);
+        positions[n.id] = { x: curX, y };
+        curX += dim.width + 40;
+      });
+    });
+
+    currentBranchX += Math.max(maxBranchWidth, 350) + 80;
   });
 
   const totalBranchesWidth = Math.max(currentBranchX - 60, 600);
   const treeCenterX = 60 + totalBranchesWidth / 2;
 
-  // 2. Position Root App at the Top Center (Tier 0)
-  if (rootAppNode && visibleMap.has(rootAppNode.id)) {
+  // 3. Position Root App at the Top Center (Tier 0)
+  if (rootAppNode && (isFullTree || visibleMap.has(rootAppNode.id))) {
     const rootX = Math.round(treeCenterX - rootDim.width / 2);
     positions[rootAppNode.id] = { x: Math.max(60, rootX), y: rootY };
   }
 
-  // 3. Position Container directly beneath Root App (Tier 1)
-  if (containerNode && visibleMap.has(containerNode.id) && containerNode.id !== rootAppNode?.id) {
+  // 4. Position Container directly beneath Root App (Tier 1)
+  if (containerNode && (isFullTree || visibleMap.has(containerNode.id)) && containerNode.id !== rootAppNode?.id) {
     const containerX = Math.round(treeCenterX - containerDim.width / 2);
     positions[containerNode.id] = { x: Math.max(60, containerX), y: containerY };
   }
 
-  // 4. Position State Shelf to the right of branch columns & root/container
-  const visibleStores = stateShelfNodes.filter((n) => visibleMap.has(n.id));
+  // 5. Lateral State Shelf: Shared Stores & Services to the right of branch columns
+  const visibleStores = isFullTree ? stateShelfNodes : stateShelfNodes.filter((n) => visibleMap.has(n.id));
   const maxCenterRight = treeCenterX + Math.max(rootDim.width, containerDim.width) / 2;
   const shelfStartX = Math.max(currentBranchX + 60, maxCenterRight + 80);
   const shelfStartY = containerY;
@@ -786,23 +743,33 @@ export function computeAdaptiveTreeLayout(visibleNodeList, treeData, rawGraph) {
     colHeights[col] += dim.height + 40;
   });
 
-  // 5. Catch any unplaced visible nodes safely
+  // 6. Catch any unplaced visible nodes safely
   const placedIds = new Set(Object.keys(positions));
-  const unplaced = visibleNodeList.filter(n => !placedIds.has(n.id) && n.id !== rootAppNode?.id && n.id !== containerNode?.id);
+  const rawList = isFullTree ? Object.values(treeData.uiNodes || {}) : visibleNodeList;
+  const unplaced = rawList.filter((n) => !placedIds.has(n.id) && n.id !== rootAppNode?.id && n.id !== containerNode?.id);
   if (unplaced.length > 0) {
     let unplacedY = branchStartY;
     const unplacedX = shelfStartX + shelfCols * (shelfColWidth + 40) + 40;
-    unplaced.forEach(node => {
+    unplaced.forEach((node) => {
       const dim = getNodeDimensions(node);
       positions[node.id] = { x: unplacedX, y: unplacedY };
       unplacedY += dim.height + 40;
     });
   }
 
-  // Final relaxation check
+  // Final relaxation check to guarantee zero overlaps across any edge cases
   const nodeMap = {};
-  visibleNodeList.forEach((n) => { nodeMap[n.id] = n.data || n; });
-  const relaxed = rearrangeNodes(positions, nodeMap, null, { paddingX: 20, paddingY: 20, maxIterations: 15 });
+  rawList.forEach((n) => { nodeMap[n.id] = n.data || n; });
+  const relaxed = rearrangeNodes(positions, nodeMap, null, { paddingX: 20, paddingY: 20, maxIterations: 20 });
   return relaxed.positions;
+}
+
+/**
+ * Compute clean, collision-free, compact layout specifically tailored
+ * for the currently visible nodes (e.g. at L1 Journey, L2 Components, or L3 Details).
+ * Cascades down across multiple vertical tiers with zero overlaps.
+ */
+export function computeAdaptiveTreeLayout(visibleNodeList, treeData, rawGraph) {
+  return computeMultiTierTreeCoordinates(visibleNodeList, treeData, false);
 }
 

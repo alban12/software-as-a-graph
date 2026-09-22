@@ -146,6 +146,9 @@ public struct ParsedTypeDecl {
     }
 
     private func determineNodeKind() -> String {
+        if conformances.contains("App") || name.hasSuffix("App") || attributes.contains("@main") {
+            return "app"
+        }
         if conformances.contains("View") || name.hasSuffix("View") || name.hasSuffix("Screen") {
             return "view"
         }
@@ -169,7 +172,7 @@ public enum SwiftFileScanner {
         let lines = content.components(separatedBy: .newlines)
 
         let typeRegex = try! NSRegularExpression(
-            pattern: #"(@[A-Za-z0-9_()]+(?:\s+@[A-Za-z0-9_()]+)*\s+)?(public\s+|private\s+|fileprivate\s+|internal\s+|final\s+)*(struct|class|protocol|actor)\s+([A-Za-z0-9_]+)(?:\s*:\s*([^{]+))?\s*\{"#,
+            pattern: #"(@[A-Za-z0-9_()]+(?:\s+@[A-Za-z0-9_()]+)*\s+)?(public\s+|private\s+|fileprivate\s+|internal\s+|final\s+)*(struct|class|protocol|actor)\s+([A-Za-z0-9_]+)(?:<[^>]+>)?(?:\s*:\s*([^{]+))?\s*\{"#,
             options: []
         )
 

@@ -279,11 +279,26 @@ export default function ScreenPreview({
     );
   }
 
-  // 2.2 CategoryHome (Featured Landing Screen)
+  // 2.2 CategoryHome (Featured Landing Screen with Featured Tab Active)
   if (name === 'CategoryHome') {
     return (
       <DeviceFrame isMini={isMini} onClick={onClick}>
-        <CategoryHomeContent isMini={isMini} onElementAction={onElementAction} />
+        <div className="preview-tabview-container">
+          <div className="preview-tab-content">
+            <CategoryHomeContent isMini={isMini} onElementAction={onElementAction} />
+          </div>
+          {/* iOS Bottom Tab Bar (Featured Selected) */}
+          <div className="ios-tab-bar">
+            <div className="tab-bar-item active">
+              <Star size={isMini ? 12 : 18} fill="#0ea5e9" color="#0ea5e9" />
+              <span style={{ color: '#0ea5e9', fontWeight: 600 }}>Featured</span>
+            </div>
+            <div className="tab-bar-item">
+              <Layers size={isMini ? 12 : 18} color="#64748b" />
+              <span>List</span>
+            </div>
+          </div>
+        </div>
       </DeviceFrame>
     );
   }
@@ -394,14 +409,23 @@ export default function ScreenPreview({
     );
   }
 
-  // 2.8 FeatureCard / PageView
+  // 2.8 FeatureCard / PageView (Interactive Paging Carousel)
   if (name === 'FeatureCard' || name === 'PageView') {
     return (
       <DeviceFrame isMini={isMini} onClick={onClick}>
         <div className="preview-content-scroll centered no-padding">
           <div className="featured-hero-card full-bleed">
             <div className="feature-overlay-gradient">
-              <div className="feature-hero-badge">Featured Landmark</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="feature-hero-badge">
+                  {name === 'PageView' ? 'PageView (PageControl)' : 'FeatureCard'}
+                </div>
+                <div style={{ display: 'flex', gap: 3 }}>
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#38bdf8' }} />
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'rgba(255,255,255,0.4)' }} />
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'rgba(255,255,255,0.4)' }} />
+                </div>
+              </div>
               <div className="feature-hero-title">Lake McDonald</div>
               <div className="feature-hero-sub">Glacier National Park</div>
             </div>
@@ -669,15 +693,30 @@ export default function ScreenPreview({
     );
   }
 
-  // 2.13 LandmarkList (Filter toggle + park items)
+  // 2.13 LandmarkList (Filter toggle + park items with List Tab Active)
   if (name.includes('List')) {
     return (
       <DeviceFrame isMini={isMini} onClick={onClick}>
-        <LandmarkListContent
-          isMini={isMini}
-          favoritesOnly={favoritesOnly}
-          setFavoritesOnly={setFavoritesOnly}
-        />
+        <div className="preview-tabview-container">
+          <div className="preview-tab-content">
+            <LandmarkListContent
+              isMini={isMini}
+              favoritesOnly={favoritesOnly}
+              setFavoritesOnly={setFavoritesOnly}
+            />
+          </div>
+          {/* iOS Bottom Tab Bar (List Selected) */}
+          <div className="ios-tab-bar">
+            <div className="tab-bar-item">
+              <Star size={isMini ? 12 : 18} color="#64748b" />
+              <span>Featured</span>
+            </div>
+            <div className="tab-bar-item active">
+              <Layers size={isMini ? 12 : 18} color="#0ea5e9" />
+              <span style={{ color: '#0ea5e9', fontWeight: 600 }}>List</span>
+            </div>
+          </div>
+        </div>
       </DeviceFrame>
     );
   }
@@ -828,10 +867,17 @@ function CategoryHomeContent({ isMini, onElementAction }) {
         </div>
       </div>
 
-      {/* Featured Card */}
+      {/* PageView Carousel Hero Element */}
       <div className="featured-hero-card">
         <div className="feature-overlay-gradient">
-          <div className="feature-hero-badge">Featured</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="feature-hero-badge">PageView Carousel</div>
+            <div style={{ display: 'flex', gap: 3 }}>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#38bdf8' }} />
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'rgba(255,255,255,0.4)' }} />
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'rgba(255,255,255,0.4)' }} />
+            </div>
+          </div>
           <div className="feature-hero-title">Lake McDonald</div>
           <div className="feature-hero-sub">Glacier National Park</div>
         </div>

@@ -12,6 +12,7 @@ import { parseSaagUri } from '../utils/crossReferences';
 
 const KIND_ICONS = {
   // iOS / Native Client
+  app: Smartphone,
   view: Globe,
   viewModel: Layers,
   service: Cpu,
@@ -152,12 +153,21 @@ function CustomNode({ id, data, selected }) {
       {/* Node Header */}
       <div className="node-header">
         <div className="node-title-group">
-          <div style={{ display: 'flex', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span className="node-kind-badge">{data.kind}</span>
             {data.level && (
               <span className={`node-level-badge level-${(data.level || '').toLowerCase()}`}>
                 {data.level === 'L1_SCREEN' ? 'L1 Screen' : data.level === 'L1_SYSTEM' ? 'L1 System' : data.level === 'L2_COMPONENT' ? 'L2 Component' : data.level === 'L3_EXECUTION' ? 'L3 Execution' : 'L3 Primitive'}
               </span>
+            )}
+            {data.name === 'CategoryHome' && (
+              <span className="tab-indicator-badge featured">★ Tab: Featured</span>
+            )}
+            {data.name === 'LandmarkList' && (
+              <span className="tab-indicator-badge list">☰ Tab: List</span>
+            )}
+            {data.name === 'ContentView' && (
+              <span className="tab-indicator-badge container">🗂️ TabView Container</span>
             )}
           </div>
           <div className="node-name" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

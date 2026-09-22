@@ -1,0 +1,28 @@
+{
+  "name": "saag-mcp",
+  "version": "1.0.0",
+  "description": "Official Model Context Protocol (MCP) Server and Architectural CI/CD Linter for Software as a Graph (SaaG)",
+  "type": "module",
+  "main": "src/server.js",
+  "bin": {
+    "saag-mcp": "./bin/saag-mcp.js"
+  },
+  "scripts": {
+    "start": "node bin/saag-mcp.js",
+    "verify": "node bin/saag-mcp.js verify",
+    "test": "node --test tests/**/*.test.mjs"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "saag",
+    "software-as-a-graph",
+    "architecture",
+    "linter",
+    "ai-agent",
+    "cursor",
+    "claude"
+  ],
+  "author": "Alban & Antigravity",
+  "license": "MIT"
+}

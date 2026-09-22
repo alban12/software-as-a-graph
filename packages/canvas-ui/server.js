@@ -178,16 +178,19 @@ app.get('/api/graph', (req, res) => {
 app.post('/api/graph', (req, res) => {
   try {
     const updatedGraph = req.body;
-    const dir = path.dirname(graphPath);
+    const targetFile = req.body?.targetPath || req.query?.targetPath || graphPath;
+    const dir = path.dirname(targetFile);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
 
     const formatted = JSON.stringify(updatedGraph, null, 2);
-    fs.writeFileSync(graphPath, formatted, 'utf8');
-    console.log(`💾 Graph saved successfully (${Object.keys(updatedGraph.nodes || {}).length} nodes)`);
+    fs.writeFileSync(targetFile, formatted, 'utf8');
+    console.log(`💾 Graph saved successfully (${Object.keys(updatedGraph.nodes || {}).length} nodes) to ${targetFile}`);
 
-    broadcastGraph(updatedGraph);
+    if (targetFile === graphPath) {
+      broadcastGraph(updatedGraph);
+    }
     res.json({ success: true, timestamp: new Date().toISOString() });
   } catch (err) {
     console.error('Error saving graph:', err);
@@ -198,10 +201,22 @@ app.post('/api/graph', (req, res) => {
 // REST: Save Generated Swift Test
 app.post('/api/save-test', (req, res) => {
   try {
-    const { code } = req.body;
+    const { code, targetPath: customTarget } = req.body;
     if (!code) return res.status(400).json({ error: 'Missing test code' });
 
-    const targetPath = path.resolve(__dirname, '../../examples/ios-auth-sample/Tests/AuthSampleTests/GeneratedDataflowTests.swift');
+    let targetPath = customTarget;
+    if (!targetPath) {
+      if (activeProjectId === 'landmarks') {
+        targetPath = path.resolve(__dirname, '../../benchmarks/Landmarks/LandmarksTests/GeneratedDataflowTests.swift');
+      } else if (activeProjectId === 'makeitso') {
+        targetPath = path.resolve(__dirname, '../../benchmarks/MakeItSo/code/frontend/MakeItSo/Shared/GeneratedDataflowTests.swift');
+      } else {
+        targetPath = path.resolve(__dirname, '../../examples/ios-auth-sample/Tests/AuthSampleTests/GeneratedDataflowTests.swift');
+      }
+    } else if (!path.isAbsolute(targetPath)) {
+      targetPath = path.resolve(__dirname, '../..', targetPath);
+    }
+
     fs.mkdirSync(path.dirname(targetPath), { recursive: true });
     fs.writeFileSync(targetPath, code, 'utf8');
     console.log(`💾 Swift Test written successfully to: ${targetPath}`);
@@ -219,14 +234,32 @@ app.post('/api/apply-refactor', (req, res) => {
     if (!plan) return res.status(400).json({ error: 'Missing refactoring plan' });
 
     const currentProject = KNOWN_PROJECTS.find((p) => p.id === activeProjectId);
-    const sourceDir = currentProject?.sourceDir || path.dirname(graphPath);
+    const sourceDir = plan.baseDir || currentProject?.sourceDir || path.dirname(graphPath);
 
     const writtenFiles = [];
     if (plan.swiftChanges && Array.isArray(plan.swiftChanges)) {
       for (const change of plan.swiftChanges) {
-        if (!change.filePath || !change.code) continue;
+        if (!change.filePath) continue;
 
-        let targetFilePath = path.resolve(sourceDir, change.filePath);
+        let targetFilePath = path.isAbsolute(change.filePath)
+          ? change.filePath
+          : path.resolve(sourceDir, change.filePath);
+
+        if (change.action === 'delete') {
+          if (fs.existsSync(targetFilePath)) {
+            fs.unlinkSync(targetFilePath);
+            console.log(`🗑️ Refactor deleted: ${targetFilePath}`);
+            writtenFiles.push({
+              filePath: change.filePath,
+              fullPath: targetFilePath,
+              action: 'delete'
+            });
+          }
+          continue;
+        }
+
+        if (!change.code) continue;
+
         fs.mkdirSync(path.dirname(targetFilePath), { recursive: true });
         fs.writeFileSync(targetFilePath, change.code, 'utf8');
         console.log(`📝 Refactor wrote ${change.action}: ${targetFilePath}`);
@@ -292,9 +325,27 @@ app.post('/api/update-view-element', (req, res) => {
       return res.status(400).json({ error: 'Missing required parameters: filePath, newLabel' });
     }
 
-    let fullSourcePath = path.resolve(__dirname, '../../examples/ios-auth-sample/Sources', filePath);
-    if (!fs.existsSync(fullSourcePath)) {
-      fullSourcePath = path.resolve(__dirname, '../../examples/ios-auth-sample', filePath);
+    let fullSourcePath = filePath;
+    if (!path.isAbsolute(filePath) || !fs.existsSync(filePath)) {
+      const currentProject = KNOWN_PROJECTS.find((p) => p.id === activeProjectId);
+      const searchCandidates = [
+        currentProject?.sourceDir ? path.resolve(currentProject.sourceDir, filePath) : null,
+        currentProject?.sourceDir ? path.resolve(currentProject.sourceDir, 'Shared', filePath) : null,
+        currentProject?.sourceDir ? path.resolve(currentProject.sourceDir, 'Landmarks', filePath) : null,
+        path.resolve(__dirname, '../../benchmarks/Landmarks', filePath),
+        path.resolve(__dirname, '../../benchmarks/Landmarks/Landmarks', filePath),
+        path.resolve(__dirname, '../../benchmarks/MakeItSo/code/frontend/MakeItSo', filePath),
+        path.resolve(__dirname, '../../benchmarks/MakeItSo/code/frontend/MakeItSo/Shared', filePath),
+        path.resolve(__dirname, '../../examples/ios-auth-sample', filePath),
+        path.resolve(__dirname, '../../examples/ios-auth-sample/Sources', filePath)
+      ].filter(Boolean);
+
+      const found = searchCandidates.find((c) => fs.existsSync(c));
+      if (found) {
+        fullSourcePath = found;
+      } else if (currentProject?.sourceDir) {
+        fullSourcePath = path.resolve(currentProject.sourceDir, filePath);
+      }
     }
 
     if (!fs.existsSync(fullSourcePath)) {
@@ -511,15 +562,14 @@ function setupFileWatcher() {
   }
 }
 
-// Initial watcher setup
-setupFileWatcher();
+export { app, server, KNOWN_PROJECTS };
 
-wss.on('connection', (ws) => {
-  console.log('⚡ Client connected to SaaG WebSocket');
-  ws.on('close', () => console.log('🔌 Client disconnected'));
-});
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`🚀 SaaG Bridge Daemon listening at http://localhost:${PORT}`);
-});
+if (isMain) {
+  setupFileWatcher();
+  const PORT = process.env.PORT || 3000;
+  server.listen(PORT, () => {
+    console.log(`🚀 SaaG Bridge Daemon listening at http://localhost:${PORT}`);
+  });
+}

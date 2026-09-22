@@ -7,10 +7,13 @@
     "canvas:dev": "npm --prefix packages/canvas-ui run dev",
     "canvas:build": "npm --prefix packages/canvas-ui run build",
     "extract:sample": "DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift run --package-path packages/extractor-swift saag-swift extract --path examples/ios-auth-sample/Sources --project 'AuthSample' --output examples/ios-auth-sample/.saag/graph.json",
+    "mcp": "node packages/mcp-server/bin/saag-mcp.js",
+    "verify": "node packages/mcp-server/bin/saag-mcp.js verify",
     "test:sample": "DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift test --package-path examples/ios-auth-sample",
     "test:extractor": "DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift test --package-path packages/extractor-swift",
     "test:canvas": "npm --prefix packages/canvas-ui test",
-    "test": "npm run test:extractor && npm run test:sample && npm run test:canvas"
+    "test:mcp": "npm --prefix packages/mcp-server test",
+    "test": "npm run test:extractor && npm run test:sample && npm run test:canvas && npm run test:mcp"
   },
   "keywords": ["software-as-a-graph", "architecture", "coding-agent", "dataflow", "ast", "swiftui"],
   "author": "Alban & Antigravity",
