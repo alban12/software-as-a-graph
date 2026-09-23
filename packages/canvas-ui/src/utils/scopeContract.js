@@ -2,9 +2,15 @@
  * Scope Contract generator and utility for SaaG Agent Workspaces
  */
 
-export function generateScopeContract(nodeIds, rawGraph, name = 'Scoped Agent Workspace') {
+export function generateScopeContract(
+  nodeIds,
+  rawGraph,
+  name = 'Scoped Agent Workspace',
+  options = {}
+) {
   if (!rawGraph || !nodeIds || nodeIds.length === 0) return null;
 
+  const { taskObjective = '' } = options;
   const lockedSet = new Set(nodeIds);
   const allowedFilesSet = new Set();
   const allGraphFilesSet = new Set();
@@ -73,6 +79,30 @@ export function generateScopeContract(nodeIds, rawGraph, name = 'Scoped Agent Wo
     a.portName.localeCompare(b.portName)
   );
 
+  const inboundBoundaryPorts = frozenBoundaryPorts.filter((p) => p.direction === 'input');
+  const outboundBoundaryPorts = frozenBoundaryPorts.filter((p) => p.direction === 'output');
+
+  // Compute External Downstream Blast Radius
+  // If state or logic within this scope changes, which nodes outside the scope are affected?
+  const externalImpactedMap = new Map();
+  Object.values(rawGraph.edges || {}).forEach((edge) => {
+    if (lockedSet.has(edge.sourceNodeId) && !lockedSet.has(edge.targetNodeId)) {
+      const targetNode = rawGraph.nodes[edge.targetNodeId];
+      if (targetNode) {
+        externalImpactedMap.set(targetNode.id, {
+          id: targetNode.id,
+          name: targetNode.name,
+          kind: targetNode.kind,
+          edgeType: edge.edgeType || edge.executionMode || 'dependency'
+        });
+      }
+    }
+  });
+  const externalBlastRadius = {
+    count: externalImpactedMap.size,
+    impactedNodes: Array.from(externalImpactedMap.values())
+  };
+
   const scopeId = `scope_${Math.random().toString(36).substring(2, 10)}`;
 
   const lockedNodeNames = nodeIds
@@ -93,11 +123,15 @@ export function generateScopeContract(nodeIds, rawGraph, name = 'Scoped Agent Wo
       }).join('\n')
     : '- No external boundary interfaces crossed.';
 
+  const taskSection = taskObjective?.trim()
+    ? `\n## 🎯 Task Objective & Scope Boundary\n${taskObjective.trim()}\n`
+    : '';
+
   const agentPrompt = `# Autonomous AI Agent Scoping Contract
 **Scope Name:** ${name}
 **Scope ID:** \`${scopeId}\`
 **Target Components:** ${lockedNodeNames}
-
+${taskSection}
 ## 1. Allowed Files (READ/WRITE PERMISSION GRANTED)
 You are STRICTLY authorized to inspect and modify ONLY the following files:
 ${allowedList}
@@ -123,7 +157,11 @@ ${forbiddenList}
     lockedNodeIds: nodeIds,
     allowedFilePaths,
     frozenBoundaryPorts,
+    inboundBoundaryPorts,
+    outboundBoundaryPorts,
     forbiddenFilePaths,
+    externalBlastRadius,
+    taskObjective: taskObjective?.trim() || '',
     agentPrompt
   };
 }

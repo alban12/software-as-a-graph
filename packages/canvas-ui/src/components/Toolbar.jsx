@@ -22,7 +22,12 @@ export default function Toolbar({
   currentDomain = 'ios',
   isLeftSidebarOpen = true,
   onToggleLeftSidebar,
-  onOpenAddModal
+  onOpenAddModal,
+  isConnected = false,
+  agentNodeCount = 0,
+  isScopeIsolationActive = false,
+  onToggleScopeIsolation,
+  onOpenAgentScope
 }) {
   const activeProject = projects.find((p) => p.id === activeProjectId);
   const domainIcons = {
@@ -114,6 +119,44 @@ export default function Toolbar({
 
       {/* Right Section: Node/Edge Stats & Quick Actions */}
       <div className="toolbar-right">
+        {/* Live AST Sync Watcher Indicator */}
+        <div
+          className={`live-sync-indicator ${isConnected ? 'active' : ''}`}
+          title={
+            isConnected
+              ? 'Real-Time Swift AST Watcher & WebSocket Hot-Reload Active'
+              : 'Connecting to SaaG Daemon...'
+          }
+        >
+          <span className={`pulse-dot ${isConnected ? 'green' : 'amber'}`} />
+          <span className="live-sync-label">{isConnected ? 'Live Sync' : 'Connecting...'}</span>
+        </div>
+
+        {/* AI Agent Scope Quick Access & Isolation Switch */}
+        {agentNodeCount > 0 && (
+          <div className="toolbar-scope-pill-group">
+            <button
+              className="toolbar-scope-badge-btn"
+              onClick={onOpenAgentScope}
+              title="Open AI Agent Scope Contracts & Prompt"
+            >
+              <span className="pulse-dot purple" />
+              <span>Scope ({agentNodeCount})</span>
+            </button>
+            <button
+              className={`toolbar-isolate-toggle ${isScopeIsolationActive ? 'active' : ''}`}
+              onClick={onToggleScopeIsolation}
+              title={
+                isScopeIsolationActive
+                  ? 'Exit Scope Isolation (Show full graph)'
+                  : 'Isolate Scope (Dim out-of-scope nodes)'
+              }
+            >
+              {isScopeIsolationActive ? '👁️ Isolated' : '👁️ Isolate'}
+            </button>
+          </div>
+        )}
+
         <div
           className="toolbar-stats-pill"
           title={`${visibleNodeCount !== undefined ? visibleNodeCount : nodeCount} nodes visible, ${edgeCount} connections`}

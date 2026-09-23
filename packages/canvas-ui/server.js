@@ -148,6 +148,7 @@ app.post('/api/projects/switch', (req, res) => {
     console.log(`📁 Switched active project to: ${project.name} (${graphPath})`);
 
     setupFileWatcher();
+    setupSwiftFileWatcher();
 
     const content = fs.readFileSync(graphPath, 'utf8');
     const json = JSON.parse(content);
@@ -515,14 +516,216 @@ app.post('/api/validate-agent-scope', (req, res) => {
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
 
-function broadcastGraph(graph) {
-  const payload = JSON.stringify({ type: 'GRAPH_UPDATED', graph });
+function broadcastGraph(graph, meta = {}) {
+  const payload = JSON.stringify({ type: 'GRAPH_UPDATED', graph, ...meta });
   wss.clients.forEach((client) => {
     if (client.readyState === 1) { // OPEN
       client.send(payload);
     }
   });
 }
+
+/**
+ * Parses Swift source code into AST descriptors (type name, properties, methods, viewElements, line spans)
+ */
+function parseSwiftASTFile(sourceContent, filename = '') {
+  const lines = sourceContent.split('\n');
+  const typeMatch = sourceContent.match(/(?:struct|class|actor|protocol)\s+([A-Za-z0-9_]+)(?:\s*:\s*([^{]+))?/);
+  const typeName = typeMatch ? typeMatch[1] : path.basename(filename, '.swift');
+  const inheritance = typeMatch && typeMatch[2] ? typeMatch[2].split(',').map((s) => s.trim()) : [];
+
+  let kind = 'view';
+  if (inheritance.includes('App') || typeName.endsWith('App')) {
+    kind = 'app';
+  } else if (
+    inheritance.includes('ObservableObject') ||
+    sourceContent.includes('@Observable') ||
+    typeName.toLowerCase().includes('viewmodel') ||
+    typeName.toLowerCase().includes('modeldata')
+  ) {
+    kind = 'viewModel';
+  } else if (typeName.toLowerCase().includes('service') || typeName.toLowerCase().includes('client')) {
+    kind = 'service';
+  } else if (typeName.toLowerCase().includes('storage') || typeName.toLowerCase().includes('repository')) {
+    kind = 'repository';
+  }
+
+  // Find start line of type declaration
+  let startLine = 1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].match(new RegExp(`(?:struct|class|actor|protocol)\\s+${typeName}\\b`))) {
+      startLine = i + 1;
+      break;
+    }
+  }
+
+  // Extract properties
+  const properties = [];
+  const propRegex = /@(State|Binding|Environment|Published|Observable)(?:\([^)]*\))?\s+(?:private\s+|public\s+|internal\s+)?var\s+([A-Za-z0-9_]+)(?:\s*:\s*([^=\n]+))?(?:\s*=\s*([^\n]+))?/g;
+  let match;
+  while ((match = propRegex.exec(sourceContent)) !== null) {
+    const decorator = match[1];
+    const name = match[2];
+    const type = (match[3] || 'Any').trim();
+    properties.push({
+      name,
+      typeAnnotation: type,
+      decorator: `@${decorator}`,
+      isState: decorator === 'State',
+      isBinding: decorator === 'Binding',
+      isPublished: decorator === 'Published'
+    });
+  }
+
+  // Extract methods / ports
+  const methods = [];
+  const methodRegex = /func\s+([A-Za-z0-9_]+)\s*\(([^)]*)\)(?:\s*(?:async\s*)?(?:throws\s*)?->\s*([^{\n]+))?/g;
+  while ((match = methodRegex.exec(sourceContent)) !== null) {
+    const name = match[1];
+    const params = match[2].trim();
+    const ret = (match[3] || 'Void').trim();
+    methods.push({
+      id: `port_${typeName.toLowerCase()}_${name.toLowerCase()}`,
+      name,
+      typeAnnotation: `(${params}) -> ${ret}`,
+      direction: 'input'
+    });
+  }
+
+  // Extract interactive UI elements & tabs / labels
+  const viewElements = [];
+  let elIdx = 0;
+
+  // 1. Buttons
+  const buttonRegex = /Button\s*\(\s*"([^"]+)"/g;
+  while ((match = buttonRegex.exec(sourceContent)) !== null) {
+    elIdx++;
+    viewElements.push({
+      id: `el_${typeName.toLowerCase()}_btn_${elIdx}`,
+      type: 'button',
+      label: match[1]
+    });
+  }
+
+  // 2. Labels (e.g. Label("ALBANNNN", systemImage: "star") or Label("List", ...))
+  const labelRegex = /Label\s*\(\s*"([^"]+)"(?:\s*,\s*systemImage:\s*"([^"]+)")?\s*\)/g;
+  while ((match = labelRegex.exec(sourceContent)) !== null) {
+    elIdx++;
+    const preceding = sourceContent.slice(Math.max(0, match.index - 120), match.index);
+    const following = sourceContent.slice(match.index, Math.min(sourceContent.length, match.index + 120));
+    const isTab = preceding.includes('.tabItem') || preceding.includes('TabView');
+    const tagMatch = following.match(/\.tag\s*\(\s*(?:[A-Za-z0-9_]+\.)?([A-Za-z0-9_]+)\s*\)/);
+    viewElements.push({
+      id: `el_${typeName.toLowerCase()}_${isTab ? 'tab' : 'label'}_${elIdx}`,
+      type: isTab ? 'tab' : 'label',
+      label: match[1],
+      systemImage: match[2] || null,
+      tag: tagMatch ? tagMatch[1].toLowerCase() : null
+    });
+  }
+
+  // 3. TabItems with Text (e.g. .tabItem { Text("Featured") })
+  const tabItemRegex = /\.tabItem\s*\{[^}]*Text\s*\(\s*"([^"]+)"\s*\)[^}]*\}/g;
+  while ((match = tabItemRegex.exec(sourceContent)) !== null) {
+    if (!viewElements.some((e) => e.label === match[1])) {
+      elIdx++;
+      viewElements.push({
+        id: `el_${typeName.toLowerCase()}_tab_${elIdx}`,
+        type: 'tab',
+        label: match[1]
+      });
+    }
+  }
+
+  return {
+    typeName,
+    kind,
+    startLine,
+    endLine: lines.length,
+    properties,
+    methods,
+    viewElements
+  };
+}
+
+/**
+ * Reconciles a changed Swift file into the loaded SaaG graph in memory
+ */
+function reconcileSwiftASTChange(fullSourcePath, graph, activeProject) {
+  if (!fs.existsSync(fullSourcePath)) return { updated: false, reason: 'File does not exist' };
+  const content = fs.readFileSync(fullSourcePath, 'utf8');
+  const ast = parseSwiftASTFile(content, path.basename(fullSourcePath));
+
+  const filename = path.basename(fullSourcePath);
+  const relativeFromRoot = activeProject?.sourceDir ? path.relative(activeProject.sourceDir, fullSourcePath) : filename;
+
+  let matchedNodeId = null;
+  const nodes = graph.nodes || {};
+
+  for (const [id, node] of Object.entries(nodes)) {
+    const nodeFile = node.sourceAnchor?.filePath;
+    if (
+      nodeFile &&
+      (nodeFile === fullSourcePath ||
+        fullSourcePath.endsWith(nodeFile) ||
+        nodeFile.endsWith(relativeFromRoot) ||
+        path.basename(nodeFile) === filename)
+    ) {
+      matchedNodeId = id;
+      break;
+    }
+    if (node.name && node.name.toLowerCase() === ast.typeName.toLowerCase()) {
+      matchedNodeId = id;
+      break;
+    }
+  }
+
+  if (matchedNodeId && nodes[matchedNodeId]) {
+    const node = nodes[matchedNodeId];
+    if (!node.sourceAnchor) {
+      node.sourceAnchor = {};
+    }
+    node.sourceAnchor.startLine = ast.startLine || node.sourceAnchor.startLine || 1;
+    node.sourceAnchor.endLine = ast.endLine || node.sourceAnchor.endLine;
+    node.sourceAnchor.filePath = node.sourceAnchor.filePath || relativeFromRoot;
+
+    // Update node name and symbolPath if typeName was changed in Swift source
+    if (ast.typeName) {
+      node.name = ast.typeName;
+      node.sourceAnchor.symbolPath = ast.typeName;
+    }
+
+    if (ast.properties && ast.properties.length > 0) {
+      node.properties = ast.properties;
+    }
+    if (ast.viewElements && ast.viewElements.length > 0) {
+      node.viewElements = ast.viewElements;
+    }
+
+    node.metadata = {
+      ...(node.metadata || {}),
+      lastSynchronizedAt: new Date().toISOString()
+    };
+
+    return { updated: true, nodeId: matchedNodeId, node };
+  }
+
+  return { updated: false, reason: `No matching graph node found for ${filename} (${ast.typeName})` };
+}
+
+// REST: Live Sync Status
+app.get('/api/live-sync/status', (req, res) => {
+  const project = KNOWN_PROJECTS.find((p) => p.id === activeProjectId);
+  res.json({
+    activeProjectId,
+    projectName: project?.name,
+    isWatching: Boolean(currentSwiftWatcher),
+    sourceDir: project?.sourceDir,
+    graphPath,
+    lastEvent: lastSwiftEvent,
+    connectedClients: wss ? wss.clients.size : 0
+  });
+});
 
 // Dynamic File Watcher for active graph
 let currentWatcher = null;
@@ -548,7 +751,7 @@ function setupFileWatcher() {
                 const raw = fs.readFileSync(graphPath, 'utf8');
                 const parsed = JSON.parse(raw);
                 console.log(`🔄 Graph file changed externally, broadcasting update...`);
-                broadcastGraph(parsed);
+                broadcastGraph(parsed, { source: 'JSON_WATCHER' });
               }
             } catch (e) {
               // File might be mid-write
@@ -562,12 +765,89 @@ function setupFileWatcher() {
   }
 }
 
-export { app, server, KNOWN_PROJECTS };
+// Dynamic Real-Time Swift File Watcher
+let currentSwiftWatcher = null;
+let swiftWatchDebounce = null;
+let lastSwiftEvent = null;
+
+function setupSwiftFileWatcher() {
+  if (currentSwiftWatcher) {
+    try {
+      currentSwiftWatcher.close();
+    } catch (e) {}
+    currentSwiftWatcher = null;
+  }
+
+  const project = KNOWN_PROJECTS.find((p) => p.id === activeProjectId);
+  if (!project || !project.sourceDir || !fs.existsSync(project.sourceDir)) {
+    return;
+  }
+
+  try {
+    currentSwiftWatcher = fs.watch(project.sourceDir, { recursive: true }, (eventType, filename) => {
+      if (!filename || !filename.endsWith('.swift')) return;
+      if (
+        filename.includes('.build') ||
+        filename.includes('.git') ||
+        filename.includes('.index-build') ||
+        filename.startsWith('.')
+      ) {
+        return;
+      }
+
+      clearTimeout(swiftWatchDebounce);
+      swiftWatchDebounce = setTimeout(() => {
+        try {
+          const fullPath = path.resolve(project.sourceDir, filename);
+          if (!fs.existsSync(fullPath)) return;
+
+          console.log(`⚡ Swift file changed: ${filename}`);
+          lastSwiftEvent = { filename, timestamp: Date.now() };
+
+          if (fs.existsSync(graphPath)) {
+            const raw = fs.readFileSync(graphPath, 'utf8');
+            const graph = JSON.parse(raw);
+            const { updated } = reconcileSwiftASTChange(fullPath, graph, project);
+
+            if (updated) {
+              fs.writeFileSync(graphPath, JSON.stringify(graph, null, 2), 'utf8');
+              console.log(`💾 Reconciled AST saved to ${graphPath}`);
+            }
+
+            broadcastGraph(graph, {
+              source: 'SWIFT_WATCHER',
+              changedFile: filename,
+              timestamp: Date.now()
+            });
+          }
+        } catch (err) {
+          console.warn('Error handling Swift file change:', err.message);
+        }
+      }, 180);
+    });
+    console.log(`👁️ Swift AST File Watcher active on: ${project.sourceDir}`);
+  } catch (err) {
+    console.warn(`Unable to watch Swift directory ${project.sourceDir}:`, err.message);
+  }
+}
+
+export {
+  app,
+  server,
+  wss,
+  KNOWN_PROJECTS,
+  broadcastGraph,
+  setupFileWatcher,
+  setupSwiftFileWatcher,
+  parseSwiftASTFile,
+  reconcileSwiftASTChange
+};
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
 
 if (isMain) {
   setupFileWatcher();
+  setupSwiftFileWatcher();
   const PORT = process.env.PORT || 3000;
   server.listen(PORT, () => {
     console.log(`🚀 SaaG Bridge Daemon listening at http://localhost:${PORT}`);

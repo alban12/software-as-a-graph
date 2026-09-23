@@ -6,7 +6,9 @@ export default function AgentScopeModal({
   onClose,
   scope,
   initialTab = 'prompt',
-  onUnlock
+  onUnlock,
+  taskObjective = '',
+  onUpdateTaskObjective
 }) {
   if (!isOpen || !scope) return null;
 
@@ -135,6 +137,21 @@ export default function AgentScopeModal({
         {/* Tab 1: Agent Prompt */}
         {activeTab === 'prompt' && (
           <div className="scope-tab-content">
+            {/* Interactive Task Objective */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>
+                🎯 Task / Feature Objective (Integrated into Agent Prompt):
+              </div>
+              <input
+                type="text"
+                className="sidebar-input"
+                placeholder="e.g. Implement biometric fallback or optimize view model caching..."
+                value={taskObjective}
+                onChange={(e) => onUpdateTaskObjective?.(e.target.value)}
+                style={{ width: '100%', fontSize: '12px', padding: '8px 12px' }}
+              />
+            </div>
+
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                 Pass this generated prompt to your AI coding agent (Claude, Gemini, Antigravity, Cursor) to enforce strict boundary guardrails:
@@ -149,7 +166,7 @@ export default function AgentScopeModal({
               </button>
             </div>
 
-            <div className="code-display-block" style={{ maxHeight: '340px', overflowY: 'auto' }}>
+            <div className="code-display-block" style={{ maxHeight: '310px', overflowY: 'auto' }}>
               <pre style={{ margin: 0, fontSize: '11px', lineHeight: 1.5, color: '#e2e8f0', whiteSpace: 'pre-wrap' }}>
                 {scope.agentPrompt}
               </pre>
@@ -160,6 +177,39 @@ export default function AgentScopeModal({
         {/* Tab 2: Frozen Boundary Interfaces */}
         {activeTab === 'contracts' && (
           <div className="scope-tab-content">
+            {/* External Downstream Blast Radius Card */}
+            {scope.externalBlastRadius?.count > 0 && (
+              <div style={{
+                background: 'rgba(245, 158, 11, 0.08)',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
+                borderRadius: 8,
+                padding: '10px 12px',
+                marginBottom: 12
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#fbbf24', fontSize: '12px', fontWeight: 600 }}>
+                  <AlertTriangle size={14} />
+                  <span>External Downstream Blast Radius: {scope.externalBlastRadius.count} Component(s)</span>
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 4 }}>
+                  Mutating state or emitting events from this scope affects the following external components:
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                  {scope.externalBlastRadius.impactedNodes.map((n) => (
+                    <span key={n.id} style={{
+                      fontSize: '11px',
+                      background: 'rgba(255, 255, 255, 0.06)',
+                      padding: '2px 8px',
+                      borderRadius: 4,
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      color: 'var(--text-primary)'
+                    }}>
+                      {n.name} <small style={{ color: 'var(--text-muted)' }}>({n.kind})</small>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: 12 }}>
               The following sockets cross the agent workspace boundary perimeter. Their names, argument structures, and return types are strictly frozen to prevent breaking caller subsystems.
             </div>

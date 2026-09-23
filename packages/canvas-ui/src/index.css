@@ -5961,5 +5961,154 @@ html, body, #root {
   color: var(--text-secondary);
 }
 
+/* ==========================================================================
+   Interactive Visual Agent Scope & Live Hot-Reload Styles
+   ========================================================================== */
+
+/* Scope Dimmed State (when Scope Isolation is active) */
+.saag-node.node-scope-dimmed {
+  opacity: 0.18 !important;
+  filter: grayscale(85%) contrast(80%);
+  pointer-events: none;
+  transition: opacity 0.3s ease, filter 0.3s ease;
+}
+
+/* Floating Multi-Select Agent Scope Action Bar */
+.floating-scope-action-bar {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 99;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(18, 18, 22, 0.92);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(192, 132, 252, 0.4);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6), 0 0 16px rgba(192, 132, 252, 0.25);
+  animation: slideUpFloat 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUpFloat {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 15px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* Real-Time Hot-Reload HUD Floating Toast */
+.hot-reload-toast {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.94);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(74, 222, 128, 0.5);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(74, 222, 128, 0.25);
+  animation: dropDownHud 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes dropDownHud {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -15px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* Live AST Sync Indicator in Toolbar */
+.live-sync-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+}
+
+.live-sync-indicator.active {
+  border-color: rgba(74, 222, 128, 0.3);
+  background: rgba(34, 197, 94, 0.08);
+  color: #4ade80;
+}
+
+.live-sync-indicator.active .pulse-dot.green {
+  background: #22c55e;
+  box-shadow: 0 0 8px #22c55e;
+}
+
+/* Toolbar Agent Scope Pill Group */
+.toolbar-scope-pill-group {
+  display: flex;
+  align-items: center;
+  background: rgba(192, 132, 252, 0.1);
+  border: 1px solid rgba(192, 132, 252, 0.35);
+  border-radius: 999px;
+  overflow: hidden;
+  padding: 1px;
+}
+
+.toolbar-scope-badge-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: #c084fc;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.toolbar-scope-badge-btn:hover {
+  background: rgba(192, 132, 252, 0.15);
+}
+
+.toolbar-isolate-toggle {
+  background: transparent;
+  border: none;
+  border-left: 1px solid rgba(192, 132, 252, 0.25);
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.toolbar-isolate-toggle:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.toolbar-isolate-toggle.active {
+  background: #a855f7;
+  color: #ffffff;
+  font-weight: 700;
+}
+
 
 

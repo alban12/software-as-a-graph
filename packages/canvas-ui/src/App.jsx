@@ -111,6 +111,10 @@ export default function App() {
   const [agentNodeIds, setAgentNodeIds] = useState(['node_authviewmodel', 'node_liveauthservice']);
   const [isScopeModalOpen, setIsScopeModalOpen] = useState(false);
   const [scopeModalTab, setScopeModalTab] = useState('prompt');
+  const [taskObjective, setTaskObjective] = useState('');
+  const [isScopeIsolationActive, setIsScopeIsolationActive] = useState(false);
+  const [selectedCanvasNodeIds, setSelectedCanvasNodeIds] = useState([]);
+  const [hotReloadToast, setHotReloadToast] = useState(null);
 
   // Modern Left Navigation Sidebar (Collapsible with Cmd+B)
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
@@ -530,8 +534,18 @@ export default function App() {
   // Compute active agent scope contract dynamically in-memory without disk locks
   const activeScope = useMemo(() => {
     if (!rawGraph || agentNodeIds.length === 0) return null;
-    return generateScopeContract(agentNodeIds, rawGraph, `Agent Context (${agentNodeIds.length} Nodes)`);
-  }, [rawGraph, agentNodeIds]);
+    return generateScopeContract(
+      agentNodeIds,
+      rawGraph,
+      `Agent Context (${agentNodeIds.length} Nodes)`,
+      { taskObjective }
+    );
+  }, [rawGraph, agentNodeIds, taskObjective]);
+
+  const handleSelectionChange = useCallback(({ nodes: selNodes }) => {
+    const ids = (selNodes || []).map((n) => n.id);
+    setSelectedCanvasNodeIds(ids);
+  }, []);
 
   const handleOpenAgentContext = useCallback(() => {
     setScopeModalTab('prompt');
@@ -647,6 +661,13 @@ export default function App() {
           const message = JSON.parse(event.data);
           if (message.type === 'GRAPH_UPDATED' && message.graph) {
             transformRef.current?.(message.graph);
+            if (message.source === 'SWIFT_WATCHER') {
+              setHotReloadToast({
+                filename: message.changedFile || 'Swift Source',
+                timestamp: message.timestamp || Date.now()
+              });
+              setTimeout(() => setHotReloadToast(null), 3200);
+            }
           }
         } catch (e) {
           console.error('WS parse error:', e);
@@ -720,6 +741,7 @@ export default function App() {
             agentNodeIds,
             onToggleAgentNode: handleToggleAgentNode,
             activeScope,
+            isDimmedByScope: isScopeIsolationActive && agentNodeIds.length > 0 && !agentNodeIds.includes(n.id),
             isExpanded: isExpandedMap.get(n.id) || false,
             onToggleCompound: handleToggleCompound,
             isBottleneckLensActive,
@@ -784,6 +806,7 @@ export default function App() {
           agentNodeIds,
           onToggleAgentNode: handleToggleAgentNode,
           activeScope,
+          isDimmedByScope: isScopeIsolationActive && agentNodeIds.length > 0 && !agentNodeIds.includes(n.id),
           isExpanded: isExpandedMap.get(n.id) || false,
           onToggleCompound: handleToggleCompound,
           isBottleneckLensActive,
@@ -814,6 +837,7 @@ export default function App() {
     currentStepIndex,
     agentNodeIds,
     activeScope,
+    isScopeIsolationActive,
     isBottleneckLensActive,
     bottleneckNodeMap,
     activeBranchId,
@@ -879,6 +903,46 @@ export default function App() {
       return reroutedEdges.map((e) => {
         const latency = e.data?.perfMeta?.averageLatencyMs || 0;
         const isCritical = isBottleneckLensActive && (latency >= 200 || e.data?.perfMeta?.isCriticalPath);
+
+        const srcInScope = agentNodeIds.includes(e.source);
+        const tgtInScope = agentNodeIds.includes(e.target);
+        const isBoundaryContract = agentNodeIds.length > 0 && srcInScope !== tgtInScope;
+        const isDimmedByScope = isScopeIsolationActive && agentNodeIds.length > 0 && !srcInScope && !tgtInScope;
+
+        // Frozen Boundary Contract crossing styling
+        if (isBoundaryContract) {
+          const rawEdge = e.data || {};
+          const contractLabel = rawEdge.contract?.payloadType
+            ? `🔒 ${rawEdge.contract.payloadType.split('->').pop().trim()}`
+            : '🔒 Boundary Contract';
+
+          return {
+            ...e,
+            animated: true,
+            style: {
+              stroke: '#c084fc',
+              strokeWidth: 2.5,
+              strokeDasharray: '5 5'
+            },
+            markerEnd: { type: MarkerType.ArrowClosed, color: '#c084fc' },
+            label: contractLabel,
+            labelStyle: {
+              fill: '#e9d5ff',
+              fontWeight: 700,
+              fontSize: 11,
+              fontFamily: 'var(--font-mono)'
+            },
+            labelBgStyle: {
+              fill: '#2e1065',
+              fillOpacity: 0.95,
+              stroke: '#c084fc',
+              strokeWidth: 1.2
+            },
+            labelBgPadding: DEFAULT_EDGE_LABEL_PADDING,
+            labelBgBorderRadius: DEFAULT_EDGE_LABEL_BORDER_RADIUS
+          };
+        }
+
         if (isCritical) {
           return {
             ...e,
@@ -1085,7 +1149,9 @@ export default function App() {
     activeBranchId,
     treeData,
     selectedElement,
-    isBottleneckLensActive
+    isBottleneckLensActive,
+    agentNodeIds,
+    isScopeIsolationActive
   ]);
 
   // Validate edge connection in real time against architectural guardrails
@@ -1623,6 +1689,9 @@ export default function App() {
           isSaving={isSaving}
           isConnected={isConnected}
           agentNodeCount={agentNodeIds.length}
+          isScopeIsolationActive={isScopeIsolationActive}
+          onToggleScopeIsolation={() => setIsScopeIsolationActive((prev) => !prev)}
+          onOpenAgentScope={handleOpenAgentContext}
           onOpenAgentContext={handleOpenAgentContext}
           onClearAgentContext={handleClearAgentContext}
           projects={projects}
@@ -1727,6 +1796,7 @@ export default function App() {
             onNodeClick={onNodeClick}
             onEdgeClick={onEdgeClick}
             onPaneClick={onPaneClick}
+            onSelectionChange={handleSelectionChange}
             fitView
             fitViewOptions={{ padding: 0.3 }}
             minZoom={0.2}
@@ -1753,6 +1823,60 @@ export default function App() {
               maskColor="rgba(22, 22, 24, 0.78)"
             />
           </ReactFlow>
+
+          {/* Floating Canvas Multi-Select Agent Scope Bar */}
+          {selectedCanvasNodeIds.length >= 2 && (
+            <div className="floating-scope-action-bar glass-panel">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="pulse-dot purple" />
+                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  {selectedCanvasNodeIds.length} Nodes Selected
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button
+                  className="btn-pill primary"
+                  onClick={() => {
+                    setAgentNodeIds(selectedCanvasNodeIds);
+                    setIsScopeModalOpen(true);
+                  }}
+                  style={{ fontSize: '11px', gap: 4 }}
+                  title="Form a new bounded AI Agent Scope with selected nodes"
+                >
+                  <span>🤖 Form Agent Scope</span>
+                </button>
+                <button
+                  className="btn-pill"
+                  onClick={() => {
+                    setAgentNodeIds((prev) => Array.from(new Set([...prev, ...selectedCanvasNodeIds])));
+                  }}
+                  style={{ fontSize: '11px', gap: 4 }}
+                  title="Add selected nodes to current active scope"
+                >
+                  <span>➕ Add to Scope</span>
+                </button>
+                <button
+                  className="btn-pill"
+                  onClick={() => setSelectedCanvasNodeIds([])}
+                  style={{ fontSize: '11px', padding: '4px 8px' }}
+                  title="Dismiss selection"
+                >
+                  <span>✕</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Real-Time Swift AST Hot-Reload Floating Toast */}
+          {hotReloadToast && (
+            <div className="hot-reload-toast glass-panel">
+              <span className="pulse-dot green" />
+              <span style={{ fontSize: '12px', fontWeight: 600, color: '#4ade80' }}>⚡ Live AST Synced:</span>
+              <span style={{ fontSize: '11px', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
+                {hotReloadToast.filename}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1833,6 +1957,8 @@ export default function App() {
         scope={activeScope}
         initialTab={scopeModalTab}
         onUnlock={handleClearAgentContext}
+        taskObjective={taskObjective}
+        onUpdateTaskObjective={setTaskObjective}
       />
 
       <BottleneckDrawer

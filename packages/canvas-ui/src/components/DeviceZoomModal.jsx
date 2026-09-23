@@ -49,6 +49,8 @@ export default function DeviceZoomModal({ isOpen, onClose, node }) {
         {/* Device Frame Display */}
         <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0' }}>
           <ScreenPreview
+            nodeId={node.id}
+            filePath={node.sourceAnchor?.filePath}
             nodeName={node.name}
             variant={activeVariant}
             size="full"

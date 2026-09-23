@@ -64,6 +64,7 @@ function CustomNode({ id, data, selected }) {
   if (isSimMutated) simClasses += ' sim-mutated';
   if (isSimDimmed) simClasses += ' sim-dimmed';
   if (isInAgentContext) simClasses += ' node-agent-selected';
+  if (data.isDimmedByScope && !isInAgentContext) simClasses += ' node-scope-dimmed';
   if (hasBottlenecks) simClasses += ' node-bottleneck-pulse';
   if (data.isBranchDimmed) simClasses += ' branch-dimmed';
 
@@ -166,7 +167,7 @@ function CustomNode({ id, data, selected }) {
             {data.name === 'LandmarkList' && (
               <span className="tab-indicator-badge list">☰ Tab: List</span>
             )}
-            {data.name === 'ContentView' && (
+            {(data.name === 'ContentView' || data.name?.toLowerCase().includes('content') || data.id === 'node_contentview') && (
               <span className="tab-indicator-badge container">🗂️ TabView Container</span>
             )}
           </div>
@@ -484,6 +485,8 @@ function CustomNode({ id, data, selected }) {
               </div>
               <ScreenPreview
                 size="mini"
+                nodeId={data.id}
+                filePath={data.sourceAnchor?.filePath}
                 nodeName={data.name}
                 customState={data.screenState || 'default'}
                 viewElements={data.viewElements}

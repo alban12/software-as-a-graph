@@ -33,6 +33,8 @@ import {
 
 export default function ScreenPreview({
   nodeName = 'LoginView',
+  nodeId = '',
+  filePath = '',
   variant = 'default',
   size = 'mini', // 'mini' | 'full'
   customState = null,
@@ -246,33 +248,89 @@ export default function ScreenPreview({
   // -------------------------------------------------------------
 
   // 2.1 ContentView (Main TabView Container)
-  if (name === 'ContentView') {
+  const isContentView =
+    name === 'ContentView' ||
+    name.toLowerCase().includes('content') ||
+    nodeId === 'node_contentview' ||
+    (filePath && filePath.toLowerCase().includes('contentview'));
+
+  if (isContentView) {
+    const tabElements = (viewElements || []).filter(
+      (e) => e.type === 'tab' || e.type === 'label'
+    );
+    const featuredTab =
+      tabElements.find(
+        (e) =>
+          e.tag === 'featured' ||
+          e.systemImage === 'star' ||
+          e.id?.includes('tab_1') ||
+          e.id?.includes('star')
+      ) || tabElements[0];
+    const listTab =
+      tabElements.find(
+        (e) =>
+          e.tag === 'list' ||
+          e.systemImage?.includes('list') ||
+          e.id?.includes('tab_2') ||
+          e.id?.includes('list')
+      ) || tabElements[1];
+
+    const featuredLabel = featuredTab?.label || 'Featured';
+    const listLabel = listTab?.label || 'List';
+
     return (
       <DeviceFrame isMini={isMini} onClick={onClick}>
         <div className="preview-tabview-container">
           <div className="preview-tab-content">
             {activeTab === 'featured' ? (
-              <CategoryHomeContent isMini={isMini} onElementAction={onElementAction} />
+              <CategoryHomeContent isMini={isMini} onElementAction={onElementAction} title={featuredLabel} />
             ) : (
               <LandmarkListContent isMini={isMini} favoritesOnly={favoritesOnly} setFavoritesOnly={setFavoritesOnly} />
             )}
           </div>
           {/* iOS Bottom Tab Bar */}
           <div className="ios-tab-bar">
-            <div
-              className={`tab-bar-item ${activeTab === 'featured' ? 'active' : ''}`}
-              onClick={(e) => { e.stopPropagation(); setActiveTab('featured'); }}
-            >
-              <Star size={isMini ? 12 : 18} fill={activeTab === 'featured' ? '#0ea5e9' : 'none'} />
-              <span>Featured</span>
-            </div>
-            <div
-              className={`tab-bar-item ${activeTab === 'list' ? 'active' : ''}`}
-              onClick={(e) => { e.stopPropagation(); setActiveTab('list'); }}
-            >
-              <Layers size={isMini ? 12 : 18} />
-              <span>List</span>
-            </div>
+            {tabElements.length > 0 ? (
+              tabElements.map((tab, idx) => {
+                const tabKey = tab.tag || (idx === 0 ? 'featured' : idx === 1 ? 'list' : `tab_${idx}`);
+                const isSelected = activeTab === tabKey || (idx === 0 && activeTab === 'featured') || (idx === 1 && activeTab === 'list');
+                const isStar = tab.systemImage?.includes('star') || idx === 0;
+                return (
+                  <div
+                    key={tab.id || idx}
+                    className={`tab-bar-item ${isSelected ? 'active' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveTab(tabKey);
+                    }}
+                  >
+                    {isStar ? (
+                      <Star size={isMini ? 12 : 18} fill={isSelected ? '#0ea5e9' : 'none'} />
+                    ) : (
+                      <Layers size={isMini ? 12 : 18} />
+                    )}
+                    <span>{tab.label}</span>
+                  </div>
+                );
+              })
+            ) : (
+              <>
+                <div
+                  className={`tab-bar-item ${activeTab === 'featured' ? 'active' : ''}`}
+                  onClick={(e) => { e.stopPropagation(); setActiveTab('featured'); }}
+                >
+                  <Star size={isMini ? 12 : 18} fill={activeTab === 'featured' ? '#0ea5e9' : 'none'} />
+                  <span>Featured</span>
+                </div>
+                <div
+                  className={`tab-bar-item ${activeTab === 'list' ? 'active' : ''}`}
+                  onClick={(e) => { e.stopPropagation(); setActiveTab('list'); }}
+                >
+                  <Layers size={isMini ? 12 : 18} />
+                  <span>List</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </DeviceFrame>
@@ -280,22 +338,33 @@ export default function ScreenPreview({
   }
 
   // 2.2 CategoryHome (Featured Landing Screen with Featured Tab Active)
-  if (name === 'CategoryHome') {
+  const isCategoryHome =
+    name === 'CategoryHome' ||
+    name.toLowerCase().includes('categoryhome') ||
+    nodeId === 'node_categoryhome';
+
+  if (isCategoryHome) {
+    const tabElements = (viewElements || []).filter(
+      (e) => e.type === 'tab' || e.type === 'label'
+    );
+    const featuredLabel = tabElements[0]?.label || 'Featured';
+    const listLabel = tabElements[1]?.label || 'List';
+
     return (
       <DeviceFrame isMini={isMini} onClick={onClick}>
         <div className="preview-tabview-container">
           <div className="preview-tab-content">
-            <CategoryHomeContent isMini={isMini} onElementAction={onElementAction} />
+            <CategoryHomeContent isMini={isMini} onElementAction={onElementAction} title={featuredLabel} />
           </div>
           {/* iOS Bottom Tab Bar (Featured Selected) */}
           <div className="ios-tab-bar">
             <div className="tab-bar-item active">
               <Star size={isMini ? 12 : 18} fill="#0ea5e9" color="#0ea5e9" />
-              <span style={{ color: '#0ea5e9', fontWeight: 600 }}>Featured</span>
+              <span style={{ color: '#0ea5e9', fontWeight: 600 }}>{featuredLabel}</span>
             </div>
             <div className="tab-bar-item">
               <Layers size={isMini ? 12 : 18} color="#64748b" />
-              <span>List</span>
+              <span>{listLabel}</span>
             </div>
           </div>
         </div>
@@ -857,11 +926,11 @@ export default function ScreenPreview({
 // -------------------------------------------------------------
 // Sub-Components for CategoryHome & LandmarkList
 // -------------------------------------------------------------
-function CategoryHomeContent({ isMini, onElementAction }) {
+function CategoryHomeContent({ isMini, onElementAction, title = 'Featured' }) {
   return (
     <div className="preview-content-scroll no-padding">
       <div className="category-home-nav">
-        <span className="cat-nav-title">Featured</span>
+        <span className="cat-nav-title">{title}</span>
         <div className="cat-nav-profile-btn" onClick={(e) => { e.stopPropagation(); onElementAction?.('openProfile'); }}>
           <User size={isMini ? 11 : 16} color="#0ea5e9" />
         </div>
