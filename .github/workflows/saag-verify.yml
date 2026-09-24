@@ -10,6 +10,10 @@ jobs:
   architectural-linter:
     name: Verify Clean Architecture & Guardrails
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
 
     steps:
       - name: Checkout Repository
@@ -24,7 +28,7 @@ jobs:
       - name: Install Dependencies
         run: npm ci || npm install
 
-      - name: Run Canvas & MCP Server Test Suites
+      - name: Run Full Test Suite
         run: |
           npm run test:canvas
           npm run test:mcp
@@ -36,26 +40,7 @@ jobs:
         run: |
           echo "## 🛡️ SaaG Architectural CI/CD Verification Summary" > saag-report.md
           echo "" >> saag-report.md
-          echo "| Domain / Project | Result | Errors | Warnings |" >> saag-report.md
-          echo "| :--- | :--- | :--- | :--- |" >> saag-report.md
-
-          for proj in "benchmarks/landmarks-graph.json" "benchmarks/makeitso-graph.json" "examples/ios-auth-sample/.saag/graph.json" "benchmarks/agent-orchestrator-graph.json" "benchmarks/ml-pipeline-graph.json"; do
-            echo "Verifying $proj..."
-            node packages/mcp-server/bin/saag-mcp.js verify --project "$proj" --markdown > /tmp/proj-report.md
-            status=$?
-            if [ $status -eq 0 ]; then
-              echo "| \`$proj\` | ✅ PASSED | 0 | - |" >> saag-report.md
-            else
-              echo "| \`$proj\` | ❌ FAILED | >0 | - |" >> saag-report.md
-            fi
-            echo "<details><summary><b>Detailed Report: $proj</b></summary>" >> saag-report.md
-            echo "" >> saag-report.md
-            cat /tmp/proj-report.md >> saag-report.md
-            echo "" >> saag-report.md
-            echo "</details>" >> saag-report.md
-            echo "" >> saag-report.md
-          done
-
+          node packages/mcp-server/bin/saag-mcp.js verify --all --markdown >> saag-report.md
           cat saag-report.md >> $GITHUB_STEP_SUMMARY
           cat saag-report.md
 

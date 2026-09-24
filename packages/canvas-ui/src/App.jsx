@@ -309,9 +309,94 @@ export default function App() {
     setServicePreviewNode(nodeData);
   }, []);
 
+  // Handle direct inline editing of Swift AST UI elements (Option 1)
+  const handleUpdateViewElement = useCallback(async ({ nodeId, elementId, oldLabel, newLabel, lineSpan, filePath }) => {
+    if (!newLabel || newLabel === oldLabel || !filePath) return false;
+
+    try {
+      const res = await fetch('/api/update-view-element', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filePath,
+          elementId,
+          oldLabel,
+          newLabel: newLabel.trim(),
+          lineSpan
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update element');
+
+      // Optimistically update ReactFlow nodes state
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id === nodeId || n.data?.sourceAnchor?.filePath === filePath) {
+            const updatedElements = (n.data?.viewElements || []).map((el) =>
+              (el.id === elementId || el.label === oldLabel) ? { ...el, label: newLabel.trim() } : el
+            );
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                viewElements: updatedElements
+              }
+            };
+          }
+          return n;
+        })
+      );
+
+      // Optimistically update selectedElement
+      setSelectedElement((prev) => {
+        if (!prev) return prev;
+        if (prev.id === nodeId || prev.data?.sourceAnchor?.filePath === filePath) {
+          const updatedElements = (prev.data?.viewElements || []).map((el) =>
+            (el.id === elementId || el.label === oldLabel) ? { ...el, label: newLabel.trim() } : el
+          );
+          return {
+            ...prev,
+            data: { ...prev.data, viewElements: updatedElements }
+          };
+        }
+        return prev;
+      });
+
+      // Optimistically update zoomPreviewNode if currently viewing in modal
+      setZoomPreviewNode((prev) => {
+        if (!prev) return prev;
+        if (prev.id === nodeId || prev.sourceAnchor?.filePath === filePath) {
+          const updatedElements = (prev.viewElements || []).map((el) =>
+            (el.id === elementId || el.label === oldLabel) ? { ...el, label: newLabel.trim() } : el
+          );
+          return { ...prev, viewElements: updatedElements };
+        }
+        return prev;
+      });
+
+      const filename = filePath.split('/').pop();
+      setHotReloadToast({
+        filename: `${filename}: "${oldLabel}" → "${newLabel.trim()}"`,
+        timestamp: Date.now()
+      });
+      setTimeout(() => setHotReloadToast(null), 3500);
+
+      return true;
+    } catch (err) {
+      console.error('Error updating Swift element:', err);
+      alert('Error updating Swift element: ' + err.message);
+      return false;
+    }
+  }, [setNodes]);
+
   const handleOpenPreviewModal = useCallback((nodeData) => {
-    setZoomPreviewNode({ ...nodeData, onScreenAction: handleScreenAction });
-  }, [handleScreenAction]);
+    setZoomPreviewNode({
+      ...nodeData,
+      onScreenAction: handleScreenAction,
+      onUpdateViewElement: handleUpdateViewElement
+    });
+  }, [handleScreenAction, handleUpdateViewElement]);
 
   // Handle 1-Click Interactive Canvas Graph Reorganization
   const handleApplyGraphRefactor = useCallback((plan) => {
@@ -333,7 +418,8 @@ export default function App() {
               onScreenAction: handleScreenAction,
               onToggleSqueeze: handleToggleSqueeze,
               onOpenServicePreview: handleOpenServicePreview,
-              onOpenPreviewModal: handleOpenPreviewModal
+              onOpenPreviewModal: handleOpenPreviewModal,
+              onUpdateViewElement: handleUpdateViewElement
             }
           }));
         return [...currentNodes, ...formattedNew];
@@ -479,7 +565,8 @@ export default function App() {
           onToggleSqueeze: handleToggleSqueeze,
           onOpenServicePreview: handleOpenServicePreview,
           onOpenPreviewModal: handleOpenPreviewModal,
-          onNavigateCrossReference: handleNavigateCrossReference
+          onNavigateCrossReference: handleNavigateCrossReference,
+          onUpdateViewElement: handleUpdateViewElement
         },
       };
     });
@@ -512,7 +599,7 @@ export default function App() {
         reactFlowInstanceRef.current?.fitView({ padding: 0.25, duration: 400 });
       }, 100);
     }
-  }, [setNodes, setEdges, handleScreenAction, handleToggleSqueeze, handleOpenServicePreview, handleOpenPreviewModal]);
+  }, [setNodes, setEdges, handleScreenAction, handleToggleSqueeze, handleOpenServicePreview, handleOpenPreviewModal, handleUpdateViewElement]);
 
   // Keep transformRef pointing to latest transform function
   useEffect(() => {
@@ -661,9 +748,9 @@ export default function App() {
           const message = JSON.parse(event.data);
           if (message.type === 'GRAPH_UPDATED' && message.graph) {
             transformRef.current?.(message.graph);
-            if (message.source === 'SWIFT_WATCHER') {
+            if (message.source === 'SWIFT_WATCHER' || message.source === 'INLINE_EDIT') {
               setHotReloadToast({
-                filename: message.changedFile || 'Swift Source',
+                filename: message.changedFile ? `${message.changedFile}${message.newLabel ? ` ("${message.newLabel}")` : ''}` : 'Swift Source',
                 timestamp: message.timestamp || Date.now()
               });
               setTimeout(() => setHotReloadToast(null), 3200);
@@ -755,7 +842,8 @@ export default function App() {
             onToggleSqueeze: handleToggleSqueeze,
             onOpenServicePreview: handleOpenServicePreview,
             onOpenPreviewModal: handleOpenPreviewModal,
-            onNavigateCrossReference: handleNavigateCrossReference
+            onNavigateCrossReference: handleNavigateCrossReference,
+            onUpdateViewElement: handleUpdateViewElement
           }
         };
       });
@@ -824,7 +912,8 @@ export default function App() {
           onToggleSqueeze: handleToggleSqueeze,
           onOpenServicePreview: handleOpenServicePreview,
           onOpenPreviewModal: handleOpenPreviewModal,
-          onNavigateCrossReference: handleNavigateCrossReference
+          onNavigateCrossReference: handleNavigateCrossReference,
+          onUpdateViewElement: handleUpdateViewElement
         }
       };
     });
@@ -849,7 +938,8 @@ export default function App() {
     handleToggleSqueeze,
     handleOpenServicePreview,
     handleOpenPreviewModal,
-    handleNavigateCrossReference
+    handleNavigateCrossReference,
+    handleUpdateViewElement
   ]);
 
   const displayEdges = useMemo(() => {
@@ -1942,7 +2032,11 @@ export default function App() {
       <DeviceZoomModal
         isOpen={!!zoomPreviewNode}
         onClose={() => setZoomPreviewNode(null)}
-        node={zoomPreviewNode ? { ...zoomPreviewNode, onScreenAction: handleScreenAction } : null}
+        node={zoomPreviewNode ? {
+          ...zoomPreviewNode,
+          onScreenAction: handleScreenAction,
+          onUpdateViewElement: handleUpdateViewElement
+        } : null}
       />
 
       <ServicePreviewModal

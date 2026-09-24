@@ -1,10 +1,10 @@
-import React, { memo, useState } from 'react';
+import React, { memo, useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import {
   Layers, ChevronDown, ChevronRight, Code2, Database, Globe, Cpu,
   Smartphone, Flame, Minimize2, Maximize2, ExternalLink, Lock, Bot,
   AlertTriangle, Zap, Server, Activity, Rocket, Wrench, GitFork,
-  ShieldCheck, Brain
+  ShieldCheck, Brain, Edit3, Check, X as XIcon, Star
 } from 'lucide-react';
 import ScreenPreview from './ScreenPreview';
 import FirebaseLogo from './FirebaseLogo';
@@ -32,6 +32,138 @@ const KIND_ICONS = {
   interconnect: Activity,
   exporter: Rocket,
 };
+
+function ViewElementBadge({ element, filePath, nodeId, onUpdateViewElement }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [labelValue, setLabelValue] = useState(element.label || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+
+  useEffect(() => {
+    setLabelValue(element.label || '');
+  }, [element.label]);
+
+  const handleSave = async (e) => {
+    e?.stopPropagation?.();
+    const trimmed = labelValue.trim();
+    if (!trimmed || trimmed === element.label) {
+      setIsEditing(false);
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const ok = await onUpdateViewElement?.({
+        nodeId,
+        elementId: element.id,
+        oldLabel: element.label,
+        newLabel: trimmed,
+        lineSpan: element.startLine ? { startLine: element.startLine, endLine: element.endLine } : undefined,
+        filePath
+      });
+      if (ok) {
+        setJustSaved(true);
+        setIsEditing(false);
+        setTimeout(() => setJustSaved(false), 2500);
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancel = (e) => {
+    e?.stopPropagation?.();
+    setLabelValue(element.label || '');
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSave(e);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      handleCancel(e);
+    }
+  };
+
+  const isStar = element.systemImage?.includes('star');
+  const isList = element.systemImage?.includes('list');
+
+  if (isEditing) {
+    return (
+      <div className="view-element-edit-box" onClick={(e) => e.stopPropagation()}>
+        <input
+          type="text"
+          className="view-element-input"
+          value={labelValue}
+          autoFocus
+          onFocus={(e) => e.target.select()}
+          disabled={isSaving}
+          onChange={(e) => setLabelValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="New label..."
+        />
+        <div className="view-element-edit-actions">
+          <button
+            type="button"
+            className="view-element-btn save"
+            onClick={handleSave}
+            disabled={isSaving || !labelValue.trim()}
+            title="Save to Swift source (Enter)"
+          >
+            {isSaving ? '...' : <Check size={11} />}
+          </button>
+          <button
+            type="button"
+            className="view-element-btn cancel"
+            onClick={handleCancel}
+            disabled={isSaving}
+            title="Cancel (Esc)"
+          >
+            <XIcon size={11} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`view-element-badge ${justSaved ? 'just-saved' : ''}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        setIsEditing(true);
+      }}
+      title={`Click to edit Swift source in-place (L${element.startLine || '?'})`}
+    >
+      <div className="element-badge-left">
+        {isStar ? (
+          <span className="element-icon">★</span>
+        ) : isList ? (
+          <span className="element-icon">☰</span>
+        ) : (
+          <span className="element-icon">🏷️</span>
+        )}
+        <span className="element-tag">{element.type || 'element'}</span>
+        <span className="element-label-text">"{element.label}"</span>
+      </div>
+      <div className="element-badge-right">
+        {element.startLine && <span className="element-line-pill">L{element.startLine}</span>}
+        <button
+          className="element-edit-pencil-btn"
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsEditing(true);
+          }}
+          title="Edit in Swift file"
+        >
+          <Edit3 size={10} />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function CustomNode({ id, data, selected }) {
   const [collapsed, setCollapsed] = useState(data.canvasMeta?.isCollapsed ?? false);
@@ -491,10 +623,35 @@ function CustomNode({ id, data, selected }) {
                 customState={data.screenState || 'default'}
                 viewElements={data.viewElements}
                 stateProps={data.stateProps}
+                onUpdateViewElement={data.onUpdateViewElement}
                 onElementAction={(actionType, payload) => {
                   data.onScreenAction?.(data.id, actionType, payload);
                 }}
               />
+            </div>
+          )}
+
+          {/* Interactive Swift AST Elements (Click-to-Edit) */}
+          {data.viewElements && data.viewElements.length > 0 && (
+            <div className="node-section node-ast-elements-section">
+              <div className="section-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <Code2 size={11} color="var(--color-view)" />
+                  <span>Swift AST Elements ({data.viewElements.length})</span>
+                </span>
+                <span className="ast-edit-hint">Click ✏️ to edit in-place</span>
+              </div>
+              <div className="view-elements-container">
+                {data.viewElements.map((el) => (
+                  <ViewElementBadge
+                    key={el.id}
+                    element={el}
+                    filePath={data.sourceAnchor?.filePath}
+                    nodeId={id}
+                    onUpdateViewElement={data.onUpdateViewElement}
+                  />
+                ))}
+              </div>
             </div>
           )}
           {/* State Variables Section */}

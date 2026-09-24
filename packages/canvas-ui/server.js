@@ -392,10 +392,16 @@ app.post('/api/update-view-element', (req, res) => {
           }
         });
         fs.writeFileSync(graphPath, JSON.stringify(rawGraph, null, 2), 'utf8');
-        broadcastGraph(rawGraph);
+        broadcastGraph(rawGraph, {
+          source: 'INLINE_EDIT',
+          changedFile: path.basename(filePath),
+          newLabel,
+          elementId,
+          timestamp: Date.now()
+        });
       }
 
-      res.json({ success: true, updated: true, newLabel });
+      res.json({ success: true, updated: true, newLabel, elementId });
     } else {
       res.status(400).json({ error: `Could not find "${oldLabel}" in ${filePath}` });
     }

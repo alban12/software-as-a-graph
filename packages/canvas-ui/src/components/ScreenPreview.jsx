@@ -41,6 +41,7 @@ export default function ScreenPreview({
   onClick = null,
   viewElements = null,
   stateProps = null,
+  onUpdateViewElement = null,
   onElementAction = null,
   initialEmail = 'alban@example.com',
   initialPassword = 'password123'
@@ -59,6 +60,43 @@ export default function ScreenPreview({
   const [isProfileEditing, setIsProfileEditing] = useState(false);
   const [hikeMetric, setHikeMetric] = useState('elevation'); // 'elevation' | 'heartRate' | 'pace'
   const [activeTab, setActiveTab] = useState('featured'); // 'featured' | 'list'
+
+  // Inline Swift AST Element Editing directly inside Preview
+  const [editingTabId, setEditingTabId] = useState(null);
+  const [editingTabLabel, setEditingTabLabel] = useState('');
+  const [isTabSaving, setIsTabSaving] = useState(false);
+
+  const handleSaveTabLabel = async (tab, newLabel) => {
+    const trimmed = (newLabel || '').trim();
+    if (!trimmed || trimmed === tab.label) {
+      setEditingTabId(null);
+      return;
+    }
+    setIsTabSaving(true);
+    try {
+      if (onUpdateViewElement) {
+        await onUpdateViewElement({
+          nodeId,
+          elementId: tab.id,
+          oldLabel: tab.label,
+          newLabel: trimmed,
+          lineSpan: tab.startLine ? { startLine: tab.startLine, endLine: tab.endLine } : undefined,
+          filePath: filePath || 'Landmarks/Views/ContentView.swift'
+        });
+      } else if (onElementAction) {
+        onElementAction('updateViewElement', {
+          elementId: tab.id,
+          oldLabel: tab.label,
+          newLabel: trimmed,
+          lineSpan: tab.startLine ? { startLine: tab.startLine, endLine: tab.endLine } : undefined,
+          filePath: filePath || 'Landmarks/Views/ContentView.swift'
+        });
+      }
+    } finally {
+      setIsTabSaving(false);
+      setEditingTabId(null);
+    }
+  };
 
   useEffect(() => {
     setEmail(initialEmail);
@@ -295,6 +333,39 @@ export default function ScreenPreview({
                 const tabKey = tab.tag || (idx === 0 ? 'featured' : idx === 1 ? 'list' : `tab_${idx}`);
                 const isSelected = activeTab === tabKey || (idx === 0 && activeTab === 'featured') || (idx === 1 && activeTab === 'list');
                 const isStar = tab.systemImage?.includes('star') || idx === 0;
+                const isEditingThisTab = editingTabId === (tab.id || `tab_${idx}`);
+
+                if (isEditingThisTab) {
+                  return (
+                    <div
+                      key={tab.id || idx}
+                      className={`tab-bar-item editing ${isSelected ? 'active' : ''}`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {isStar ? (
+                        <Star size={isMini ? 12 : 18} fill={isSelected ? '#0ea5e9' : 'none'} />
+                      ) : (
+                        <Layers size={isMini ? 12 : 18} />
+                      )}
+                      <input
+                        type="text"
+                        className="tab-inline-input"
+                        value={editingTabLabel}
+                        autoFocus
+                        onFocus={(e) => e.target.select()}
+                        disabled={isTabSaving}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => setEditingTabLabel(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveTabLabel(tab, editingTabLabel);
+                          if (e.key === 'Escape') { e.stopPropagation(); setEditingTabId(null); }
+                        }}
+                        onBlur={() => handleSaveTabLabel(tab, editingTabLabel)}
+                      />
+                    </div>
+                  );
+                }
+
                 return (
                   <div
                     key={tab.id || idx}
@@ -303,6 +374,12 @@ export default function ScreenPreview({
                       e.stopPropagation();
                       setActiveTab(tabKey);
                     }}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      setEditingTabId(tab.id || `tab_${idx}`);
+                      setEditingTabLabel(tab.label);
+                    }}
+                    title="Double-click to edit Swift code inline"
                   >
                     {isStar ? (
                       <Star size={isMini ? 12 : 18} fill={isSelected ? '#0ea5e9' : 'none'} />
@@ -358,14 +435,64 @@ export default function ScreenPreview({
           </div>
           {/* iOS Bottom Tab Bar (Featured Selected) */}
           <div className="ios-tab-bar">
-            <div className="tab-bar-item active">
-              <Star size={isMini ? 12 : 18} fill="#0ea5e9" color="#0ea5e9" />
-              <span style={{ color: '#0ea5e9', fontWeight: 600 }}>{featuredLabel}</span>
-            </div>
-            <div className="tab-bar-item">
-              <Layers size={isMini ? 12 : 18} color="#64748b" />
-              <span>{listLabel}</span>
-            </div>
+            {tabElements.length > 0 ? (
+              tabElements.map((tab, idx) => {
+                const isStar = tab.systemImage?.includes('star') || idx === 0;
+                const isEditingThisTab = editingTabId === (tab.id || `cat_tab_${idx}`);
+                if (isEditingThisTab) {
+                  return (
+                    <div
+                      key={tab.id || idx}
+                      className="tab-bar-item editing active"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {isStar ? <Star size={isMini ? 12 : 18} fill="#0ea5e9" color="#0ea5e9" /> : <Layers size={isMini ? 12 : 18} color="#64748b" />}
+                      <input
+                        type="text"
+                        className="tab-inline-input"
+                        value={editingTabLabel}
+                        autoFocus
+                        onFocus={(e) => e.target.select()}
+                        disabled={isTabSaving}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => setEditingTabLabel(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveTabLabel(tab, editingTabLabel);
+                          if (e.key === 'Escape') { e.stopPropagation(); setEditingTabId(null); }
+                        }}
+                        onBlur={() => handleSaveTabLabel(tab, editingTabLabel)}
+                      />
+                    </div>
+                  );
+                }
+                return (
+                  <div
+                    key={tab.id || idx}
+                    className={`tab-bar-item ${idx === 0 ? 'active' : ''}`}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      setEditingTabId(tab.id || `cat_tab_${idx}`);
+                      setEditingTabLabel(tab.label);
+                    }}
+                    title="Double-click to edit Swift code inline"
+                  >
+                    {isStar ? <Star size={isMini ? 12 : 18} fill="#0ea5e9" color="#0ea5e9" /> : <Layers size={isMini ? 12 : 18} color="#64748b" />}
+                    <span style={idx === 0 ? { color: '#0ea5e9', fontWeight: 600 } : undefined}>{tab.label}</span>
+                  </div>
+                );
+              })
+            ) : (
+              <>
+                <div className="tab-bar-item active">
+                  <Star size={isMini ? 12 : 18} fill="#0ea5e9" color="#0ea5e9" />
+                  <span style={{ color: '#0ea5e9', fontWeight: 600 }}>{featuredLabel}</span>
+                </div>
+                <div className="tab-bar-item">
+                  <Layers size={isMini ? 12 : 18} color="#64748b" />
+                  <span>{listLabel}</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </DeviceFrame>

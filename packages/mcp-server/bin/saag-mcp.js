@@ -11,7 +11,7 @@
  */
 
 import { McpServer, TOOLS, SERVER_METADATA } from '../src/server.js';
-import { resolveProjectGraph } from '../src/projectResolver.js';
+import { resolveProjectGraph, getKnownProjects } from '../src/projectResolver.js';
 import { verifyGraph, formatTerminalReport, formatMarkdownReport } from '../src/verifier.js';
 
 const args = process.argv.slice(2);
@@ -29,6 +29,7 @@ USAGE:
   saag-mcp --help, -h                Show this help message
 
 OPTIONS FOR "verify":
+  --all                              Verify all known benchmark projects
   --project <id|path>                Target project ID or path to graph.json (default: landmarks)
   --max-blast-radius <n>             Max allowable state blast radius fanout (default: 5)
   --json                             Output results in machine-readable JSON format
@@ -40,7 +41,7 @@ EXAMPLES:
   npx saag-mcp
 
   # Verify architecture in GitHub Actions CI
-  npx saag-mcp verify --project benchmarks/landmarks-graph.json
+  npx saag-mcp verify --all --markdown
 
   # Verify with Markdown comment for GitHub PR bot
   npx saag-mcp verify --project makeitso --markdown
@@ -49,13 +50,16 @@ EXAMPLES:
 
 async function runVerify() {
   let projectRef = 'landmarks';
+  let verifyAll = false;
   let maxBlastRadius = 5;
   let isJson = false;
   let isMarkdown = false;
 
   for (let i = 1; i < args.length; i++) {
     const arg = args[i];
-    if (arg === '--project' && args[i + 1]) {
+    if (arg === '--all') {
+      verifyAll = true;
+    } else if (arg === '--project' && args[i + 1]) {
       projectRef = args[++i];
     } else if (arg === '--max-blast-radius' && args[i + 1]) {
       maxBlastRadius = parseInt(args[++i], 10) || 5;
@@ -67,6 +71,47 @@ async function runVerify() {
       printHelp();
       process.exit(0);
     }
+  }
+
+  if (verifyAll) {
+    const known = getKnownProjects();
+    const results = [];
+    let allPassed = true;
+
+    if (!isJson && !isMarkdown) {
+      console.log(`\n🛡️  SaaG Architectural Verification Suite (All ${Object.keys(known).length} Projects)\n`);
+    }
+
+    for (const [id, p] of Object.entries(known)) {
+      try {
+        const { graph, projectName } = resolveProjectGraph(id);
+        const result = verifyGraph(graph, {
+          maxBlastRadius,
+          enforceLayerSeparation: true,
+          checkCycles: true,
+          checkMlHardware: true
+        });
+        if (!result.passed) allPassed = false;
+        results.push({ projectId: id, projectName, ...result });
+
+        if (isMarkdown) {
+          console.log(formatMarkdownReport(result, projectName));
+          console.log('\n---\n');
+        } else if (!isJson) {
+          console.log(formatTerminalReport(result, projectName));
+        }
+      } catch (e) {
+        allPassed = false;
+        results.push({ projectId: id, projectName: p.name, passed: false, error: e.message });
+        console.error(`❌ Failed to verify ${p.name}: ${e.message}`);
+      }
+    }
+
+    if (isJson) {
+      console.log(JSON.stringify({ allPassed, projects: results }, null, 2));
+    }
+
+    process.exit(allPassed ? 0 : 1);
   }
 
   try {
