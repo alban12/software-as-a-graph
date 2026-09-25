@@ -1,8 +1,8 @@
-import React from 'react';
 import {
   PanelLeft,
   Plus,
-  Save
+  Save,
+  Sparkles
 } from 'lucide-react';
 
 export default function Toolbar({
@@ -23,6 +23,8 @@ export default function Toolbar({
   isLeftSidebarOpen = true,
   onToggleLeftSidebar,
   onOpenAddModal,
+  onOpenBlueprintPalette,
+  isBlueprintPaletteOpen = false,
   isConnected = false,
   agentNodeCount = 0,
   isScopeIsolationActive = false,
@@ -155,6 +157,18 @@ export default function Toolbar({
               {isScopeIsolationActive ? '👁️ Isolated' : '👁️ Isolate'}
             </button>
           </div>
+        )}
+
+        {onOpenBlueprintPalette && (
+          <button
+            className={`btn-pill toolbar-blueprint-btn ${isBlueprintPaletteOpen ? 'active' : ''}`}
+            onClick={onOpenBlueprintPalette}
+            title={isBlueprintPaletteOpen ? "Collapse Node & Blueprint Palette (Shift+A or ⌘K)" : "Expand Node & Blueprint Palette (Shift+A or ⌘K)"}
+            aria-label="Toggle Node & Blueprint Palette"
+          >
+            <Sparkles size={13} className="blueprint-sparkle-icon" />
+            <span>Palette</span>
+          </button>
         )}
 
         <div

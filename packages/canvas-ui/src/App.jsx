@@ -26,6 +26,8 @@ import PerformanceProfilingModal from './components/PerformanceProfilingModal';
 import EdgeGuardrailToast from './components/EdgeGuardrailToast';
 import BottleneckDrawer from './components/BottleneckDrawer';
 import AppTreeNavigator from './components/AppTreeNavigator';
+import BlueprintPaletteModal from './components/BlueprintPaletteModal';
+import { instantiateBlueprint } from './blueprints/blueprintInstantiator';
 import { analyzeBottlenecks } from './analysis/bottleneckEngine';
 import { decomposeAppTree, getNodeDimensions, rearrangeNodes, detectCollisions, computeAdaptiveTreeLayout, isSystemDesignNode } from './analysis/treeEngine';
 import { computeTemporalPipelineLayout } from './analysis/pipelineEngine';
@@ -38,6 +40,7 @@ import { PRESET_SCENARIOS } from './simulation/engine';
 
 const nodeTypes = {
   saagNode: CustomNode,
+  custom: CustomNode,
 };
 
 const DEFAULT_EDGE_LABEL_STYLE = {
@@ -76,6 +79,10 @@ export default function App() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [graphLoadError, setGraphLoadError] = useState(null);
+  const [isLoadingGraph, setIsLoadingGraph] = useState(false);
+  const reconnectTimeoutRef = useRef(null);
+  const retryDelayRef = useRef(1000);
   const [guardrailAlert, setGuardrailAlert] = useState(null);
 
   const rawGraphRef = useRef(null);
@@ -115,15 +122,27 @@ export default function App() {
   const [isScopeIsolationActive, setIsScopeIsolationActive] = useState(false);
   const [selectedCanvasNodeIds, setSelectedCanvasNodeIds] = useState([]);
   const [hotReloadToast, setHotReloadToast] = useState(null);
+  const [scaffoldToast, setScaffoldToast] = useState(null);
 
   // Modern Left Navigation Sidebar (Collapsible with Cmd+B)
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
 
+  // Capability Blueprints Quick Palette & Code Scaffolding
+  const [isBlueprintPaletteOpen, setIsBlueprintPaletteOpen] = useState(false);
+  const [scaffoldCodeEnabled, setScaffoldCodeEnabled] = useState(true);
+  const [isDragOverCanvas, setIsDragOverCanvas] = useState(false);
+
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Toggle sidebar: Cmd+B
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault();
         setIsLeftSidebarOpen((prev) => !prev);
+      }
+      // Toggle Capability Blueprint Palette: Shift+A or Cmd+K
+      if ((e.shiftKey && e.key.toLowerCase() === 'a') || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k')) {
+        e.preventDefault();
+        setIsBlueprintPaletteOpen((prev) => !prev);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -606,15 +625,20 @@ export default function App() {
     transformRef.current = transformGraphToReactFlow;
   }, [transformGraphToReactFlow]);
 
-  // Load graph from local bridge API
+  // Load graph from local bridge API with error handling
   const loadGraph = useCallback(async () => {
+    setIsLoadingGraph(true);
     try {
       const res = await fetch('/api/graph');
-      if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+      if (!res.ok) throw new Error(`HTTP error ${res.status}: ${res.statusText}`);
       const data = await res.json();
       transformGraphToReactFlow(data);
+      setGraphLoadError(null);
     } catch (err) {
       console.error('Failed to load graph:', err);
+      setGraphLoadError(err.message || 'Unable to connect to SaaG bridge daemon');
+    } finally {
+      setIsLoadingGraph(false);
     }
   }, [transformGraphToReactFlow]);
 
@@ -732,42 +756,84 @@ export default function App() {
     loadGraph();
   }, [loadProjects, loadGraph]);
 
-  // WebSocket connection for real-time live reload (connect once on mount)
+  // WebSocket connection for real-time live reload with auto-reconnect & exponential backoff
   useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
-    let ws;
+    let ws = null;
+    let isUnmounted = false;
 
-    try {
-      ws = new WebSocket(wsUrl);
-      ws.onopen = () => setIsConnected(true);
-      ws.onclose = () => setIsConnected(false);
-      ws.onerror = () => setIsConnected(false);
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          if (message.type === 'GRAPH_UPDATED' && message.graph) {
-            transformRef.current?.(message.graph);
-            if (message.source === 'SWIFT_WATCHER' || message.source === 'INLINE_EDIT') {
-              setHotReloadToast({
-                filename: message.changedFile ? `${message.changedFile}${message.newLabel ? ` ("${message.newLabel}")` : ''}` : 'Swift Source',
-                timestamp: message.timestamp || Date.now()
-              });
-              setTimeout(() => setHotReloadToast(null), 3200);
+    const connectWebSocket = () => {
+      if (isUnmounted) return;
+
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/ws`;
+
+      try {
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          if (isUnmounted) return;
+          setIsConnected(true);
+          retryDelayRef.current = 1000; // Reset backoff on successful connect
+          loadGraph(); // Sync latest graph state upon reconnect
+        };
+
+        ws.onclose = () => {
+          if (isUnmounted) return;
+          setIsConnected(false);
+          const delay = retryDelayRef.current;
+          retryDelayRef.current = Math.min(Math.round(delay * 1.5), 15000);
+          reconnectTimeoutRef.current = setTimeout(connectWebSocket, delay);
+        };
+
+        ws.onerror = () => {
+          if (isUnmounted) return;
+          setIsConnected(false);
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data);
+            if (message.type === 'PING') {
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'PONG' }));
+              }
+              return;
             }
+            if (message.type === 'GRAPH_UPDATED' && message.graph) {
+              transformRef.current?.(message.graph);
+              if (message.source === 'SWIFT_WATCHER' || message.source === 'INLINE_EDIT') {
+                setHotReloadToast({
+                  filename: message.changedFile ? `${message.changedFile}${message.newLabel ? ` ("${message.newLabel}")` : ''}` : 'Swift Source',
+                  timestamp: message.timestamp || Date.now()
+                });
+                setTimeout(() => setHotReloadToast(null), 3200);
+              }
+            }
+          } catch (e) {
+            console.error('WS parse error:', e);
           }
-        } catch (e) {
-          console.error('WS parse error:', e);
+        };
+      } catch (e) {
+        console.warn('WS not available, retrying:', e);
+        if (!isUnmounted) {
+          const delay = retryDelayRef.current;
+          retryDelayRef.current = Math.min(Math.round(delay * 1.5), 15000);
+          reconnectTimeoutRef.current = setTimeout(connectWebSocket, delay);
         }
-      };
-    } catch (e) {
-      console.warn('WS not available:', e);
-    }
+      }
+    };
+
+    connectWebSocket();
 
     return () => {
-      if (ws) ws.close();
+      isUnmounted = true;
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+      if (ws) {
+        ws.onclose = null;
+        ws.close();
+      }
     };
-  }, []);
+  }, [loadGraph]);
 
   // Compute active simulation decorators on nodes and edges
   const currentStep = simulation ? simulation.steps[currentStepIndex] : null;
@@ -1486,6 +1552,315 @@ export default function App() {
     setSelectedElement(rfNode);
   }, [setNodes]);
 
+  // Instantiate Capability Blueprint micro-topology onto canvas
+  const handleInstantiateBlueprint = useCallback(async (blueprint, dropPosition) => {
+    try {
+      const existingNodeIds = nodes.map((n) => n.id);
+      const instantiated = instantiateBlueprint(blueprint, dropPosition, existingNodeIds);
+
+      // 1. Immediately update ReactFlow visual nodes and edges
+      setNodes((prev) => [...prev, ...instantiated.nodes]);
+      setEdges((prev) => [...prev, ...instantiated.edges]);
+
+      // 2. Synchronize rawGraph state
+      setRawGraph((prev) => {
+        if (!prev) return prev;
+        const nextNodes = { ...(prev.nodes || {}) };
+        const nextEdges = { ...(prev.edges || {}) };
+        instantiated.nodes.forEach((n) => {
+          nextNodes[n.id] = {
+            ...n.data,
+            id: n.id,
+            position: n.position
+          };
+        });
+        instantiated.edges.forEach((e) => {
+          nextEdges[e.id] = {
+            id: e.id,
+            sourceNodeId: e.source,
+            targetNodeId: e.target,
+            sourceHandle: e.sourceHandle,
+            targetHandle: e.targetHandle,
+            edgeKind: e.data?.edgeKind,
+            contract: e.data?.contract,
+            label: e.label
+          };
+        });
+        const updated = { ...prev, nodes: nextNodes, edges: nextEdges };
+        rawGraphRef.current = updated;
+        return updated;
+      });
+
+      // 3. Call backend scaffolding API to persist starter code & graph
+      const res = await fetch('/api/scaffold-blueprint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          blueprintId: instantiated.blueprintId,
+          blueprintTitle: instantiated.blueprintTitle,
+          newNodes: instantiated.nodes,
+          newEdges: instantiated.edges,
+          files: instantiated.filesToScaffold,
+          scaffoldCode: scaffoldCodeEnabled
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to scaffold blueprint');
+      }
+
+      // 4. Provide feedback toast
+      const filesCount = data.scaffoldedFiles?.length || 0;
+      const toastMsg = filesCount > 0
+        ? `Added ${instantiated.nodes.length} nodes & created ${filesCount} starter files on disk!`
+        : `Added ${instantiated.nodes.length} nodes & ${instantiated.edges.length} pre-wired connections!`;
+
+      setScaffoldToast({
+        title: instantiated.blueprintTitle,
+        message: toastMsg
+      });
+      setTimeout(() => setScaffoldToast(null), 4500);
+
+      // 5. Select first node & smoothly center view
+      if (instantiated.nodes.length > 0) {
+        setSelectedElement(instantiated.nodes[0]);
+        if (reactFlowInstanceRef.current) {
+          const firstPos = instantiated.nodes[0].position;
+          reactFlowInstanceRef.current.setCenter(firstPos.x + 120, firstPos.y + 100, {
+            zoom: 0.95,
+            duration: 500
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to add capability blueprint:', err);
+      alert(`Error adding capability blueprint: ${err.message}`);
+    }
+  }, [nodes, scaffoldCodeEnabled, setNodes, setEdges]);
+
+  // Handle dropping a Single Architectural Node from the palette
+  const handleDropSingleNode = useCallback(async (template, dropPosition) => {
+    try {
+      const timestamp = Date.now().toString(36).slice(-4);
+      const sanitizedKind = (template.kind || 'node').toLowerCase().replace(/[^a-z0-9_]/g, '');
+      const baseId = `node_${sanitizedKind}_${timestamp}`;
+      let finalNodeId = baseId;
+      let counter = 1;
+      const existingIds = new Set(nodes.map((n) => n.id));
+      while (existingIds.has(finalNodeId)) {
+        finalNodeId = `${baseId}_${counter++}`;
+      }
+
+      const rfNode = {
+        id: finalNodeId,
+        type: 'saagNode',
+        position: dropPosition,
+        data: {
+          id: finalNodeId,
+          name: template.name,
+          kind: template.kind,
+          level: template.level || 'L1_SCREEN',
+          domain: template.domain || 'ios',
+          sourceFile: template.sourceFile || '',
+          canvasMeta: {
+            position: dropPosition,
+            color: template.color || undefined
+          },
+          inputs: template.inputs || [],
+          outputs: template.outputs || [],
+          tags: template.tags || [],
+          description: template.description || '',
+          viewElements: template.viewElements || [],
+          properties: template.properties || [],
+          methods: template.methods || [],
+          contract: template.contract || {},
+          runtimeConfig: template.runtimeConfig || {},
+          hardwareProfile: template.hardwareProfile || null,
+        }
+      };
+
+      // 1. Immediately update ReactFlow visual nodes
+      setNodes((prev) => [...prev, rfNode]);
+      setSelectedElement(rfNode);
+
+      // 2. Synchronize rawGraph state
+      setRawGraph((prev) => {
+        if (!prev) return prev;
+        const nextNodes = { ...(prev.nodes || {}) };
+        nextNodes[finalNodeId] = {
+          ...rfNode.data,
+          id: finalNodeId,
+          position: dropPosition
+        };
+        const updated = { ...prev, nodes: nextNodes };
+        rawGraphRef.current = updated;
+        return updated;
+      });
+
+      // 3. Call backend scaffolding API to persist starter code & graph if enabled
+      const files = (template.sourceFile && template.codeTemplate)
+        ? [{ filePath: template.sourceFile, content: template.codeTemplate, nodeId: finalNodeId }]
+        : [];
+
+      if (scaffoldCodeEnabled && files.length > 0) {
+        try {
+          const res = await fetch('/api/scaffold-blueprint', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              blueprintId: template.id || `single_${template.kind}`,
+              blueprintTitle: template.name,
+              newNodes: [rfNode],
+              newEdges: [],
+              files,
+              scaffoldCode: true
+            })
+          });
+          const data = await res.json();
+          const filesCount = data.scaffoldedFiles?.length || 0;
+          setScaffoldToast({
+            title: template.name,
+            message: filesCount > 0
+              ? `Added "${template.name}" & scaffolded ${template.sourceFile} on disk!`
+              : `Added "${template.name}" node to canvas.`
+          });
+          setTimeout(() => setScaffoldToast(null), 4000);
+        } catch (err) {
+          console.error('Failed to scaffold single node file:', err);
+          setScaffoldToast({
+            title: template.name,
+            message: `Added "${template.name}" node to canvas.`
+          });
+          setTimeout(() => setScaffoldToast(null), 3000);
+        }
+      } else {
+        setScaffoldToast({
+          title: template.name,
+          message: `Added "${template.name}" node to canvas.`
+        });
+        setTimeout(() => setScaffoldToast(null), 3000);
+      }
+
+      // 4. Smoothly focus view if needed
+      if (reactFlowInstanceRef.current) {
+        reactFlowInstanceRef.current.setCenter(dropPosition.x + 80, dropPosition.y + 40, {
+          zoom: 0.95,
+          duration: 400
+        });
+      }
+    } catch (err) {
+      console.error('Failed to add node template:', err);
+      alert(`Error adding node template: ${err.message}`);
+    }
+  }, [nodes, scaffoldCodeEnabled, setNodes, setRawGraph]);
+
+  // Drag and Drop handlers for ReactFlow canvas
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setIsDragOverCanvas(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e) => {
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    setIsDragOverCanvas(false);
+  }, []);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    setIsDragOverCanvas(false);
+
+    let dropPos = { x: 250, y: 250 };
+    if (reactFlowInstanceRef.current) {
+      if (typeof reactFlowInstanceRef.current.screenToFlowPosition === 'function') {
+        dropPos = reactFlowInstanceRef.current.screenToFlowPosition({
+          x: e.clientX,
+          y: e.clientY
+        });
+      } else if (typeof reactFlowInstanceRef.current.project === 'function') {
+        const bounds = e.currentTarget.getBoundingClientRect();
+        dropPos = reactFlowInstanceRef.current.project({
+          x: e.clientX - bounds.left,
+          y: e.clientY - bounds.top
+        });
+      }
+    }
+
+    // 1. Try unified application/saag-dnd
+    const dndRaw = e.dataTransfer.getData('application/saag-dnd');
+    if (dndRaw) {
+      try {
+        const payload = JSON.parse(dndRaw);
+        if (payload.type === 'node' && payload.nodeTemplate) {
+          handleDropSingleNode(payload.nodeTemplate, dropPos);
+          return;
+        } else if (payload.type === 'blueprint' && payload.blueprint) {
+          handleInstantiateBlueprint(payload.blueprint, dropPos);
+          return;
+        }
+      } catch (err) {
+        console.error('Failed to parse saag-dnd payload:', err);
+      }
+    }
+
+    // 2. Try application/saag-node fallback
+    const nodeRaw = e.dataTransfer.getData('application/saag-node');
+    if (nodeRaw) {
+      try {
+        const nodeTemplate = JSON.parse(nodeRaw);
+        handleDropSingleNode(nodeTemplate, dropPos);
+        return;
+      } catch (err) {
+        console.error('Failed to parse saag-node payload:', err);
+      }
+    }
+
+    // 3. Try application/saag-blueprint fallback
+    const blueprintRaw = e.dataTransfer.getData('application/saag-blueprint');
+    if (blueprintRaw) {
+      try {
+        const blueprint = JSON.parse(blueprintRaw);
+        handleInstantiateBlueprint(blueprint, dropPos);
+        return;
+      } catch (err) {
+        console.error('Failed to parse dropped blueprint data:', err);
+      }
+    }
+  }, [handleInstantiateBlueprint, handleDropSingleNode]);
+
+  // Click-to-add handler for capability blueprints from palette
+  const handleAddBlueprintFromModal = useCallback((blueprint) => {
+    let centerPos = { x: 300, y: 300 };
+    if (reactFlowInstanceRef.current) {
+      const wrapper = document.querySelector('.saag-canvas-wrapper');
+      if (wrapper && typeof reactFlowInstanceRef.current.screenToFlowPosition === 'function') {
+        const rect = wrapper.getBoundingClientRect();
+        centerPos = reactFlowInstanceRef.current.screenToFlowPosition({
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2
+        });
+      }
+    }
+    handleInstantiateBlueprint(blueprint, centerPos);
+  }, [handleInstantiateBlueprint]);
+
+  // Click-to-add handler for single node templates from palette
+  const handleAddNodeTemplateFromPalette = useCallback((template) => {
+    let centerPos = { x: 300, y: 300 };
+    if (reactFlowInstanceRef.current) {
+      const wrapper = document.querySelector('.saag-canvas-wrapper');
+      if (wrapper && typeof reactFlowInstanceRef.current.screenToFlowPosition === 'function') {
+        const rect = wrapper.getBoundingClientRect();
+        centerPos = reactFlowInstanceRef.current.screenToFlowPosition({
+          x: rect.left + rect.width / 2 + (Math.random() * 80 - 40),
+          y: rect.top + rect.height / 2 + (Math.random() * 80 - 40)
+        });
+      }
+    }
+    handleDropSingleNode(template, centerPos);
+  }, [handleDropSingleNode]);
+
   // Handle Multi-Scale Abstraction Level Change with Zero-Void Adaptive Packing
   const handleLevelChange = useCallback((newLevel) => {
     setAbstractionLevel(newLevel);
@@ -1752,6 +2127,8 @@ export default function App() {
         }}
         isTreeNavigatorOpen={isTreeNavigatorOpen}
         onToggleTreeNavigator={() => setIsTreeNavigatorOpen((prev) => !prev)}
+        isBlueprintPaletteOpen={isBlueprintPaletteOpen}
+        onToggleBlueprintPalette={() => setIsBlueprintPaletteOpen((prev) => !prev)}
         onOpenSimulation={() => setIsSimModalOpen(true)}
         bottleneckCount={bottleneckData.bottlenecks?.length || 0}
         isBottleneckLensActive={isBottleneckLensActive}
@@ -1837,9 +2214,16 @@ export default function App() {
           isLeftSidebarOpen={isLeftSidebarOpen}
           onToggleLeftSidebar={() => setIsLeftSidebarOpen((prev) => !prev)}
           onOpenAddModal={() => setIsAddModalOpen(true)}
+          isBlueprintPaletteOpen={isBlueprintPaletteOpen}
+          onOpenBlueprintPalette={() => setIsBlueprintPaletteOpen((prev) => !prev)}
         />
 
-        <div className="saag-canvas-wrapper">
+        <div
+          className={`saag-canvas-wrapper ${isDragOverCanvas ? 'drag-over-active' : ''}`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
           {/* Floating Canvas Tab / Branch Switcher Filter Bar */}
           {layoutMode === 'tree' && treeData?.branches?.length > 0 && (
             <div className="canvas-tab-floating-bar glass-panel">
@@ -1914,6 +2298,30 @@ export default function App() {
             />
           </ReactFlow>
 
+          {/* Canvas Graph Load Error Overlay with Retry */}
+          {graphLoadError && nodes.length === 0 && (
+            <div className="canvas-error-overlay">
+              <div className="canvas-error-card glass-panel">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ fontSize: 28 }}>⚠️</span>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 16, color: 'var(--text-primary)' }}>Bridge Connection Failed</h3>
+                    <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>{graphLoadError}</p>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                  <button
+                    className="toolbar-btn primary"
+                    onClick={loadGraph}
+                    disabled={isLoadingGraph}
+                  >
+                    {isLoadingGraph ? '🔄 Connecting...' : '🔄 Retry Connection'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Floating Canvas Multi-Select Agent Scope Bar */}
           {selectedCanvasNodeIds.length >= 2 && (
             <div className="floating-scope-action-bar glass-panel">
@@ -1967,6 +2375,29 @@ export default function App() {
               </span>
             </div>
           )}
+
+          {/* Blueprint & Code Scaffolding Toast Notification */}
+          {scaffoldToast && (
+            <div className="hot-reload-toast glass-panel" style={{ borderColor: 'rgba(191, 90, 242, 0.45)' }}>
+              <span className="pulse-dot purple" />
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--accent-purple, #bf5af2)' }}>
+                {scaffoldToast.title}:
+              </span>
+              <span style={{ fontSize: '11px', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
+                {scaffoldToast.message}
+              </span>
+            </div>
+          )}
+
+          {/* Architecture & Nodes Palette Floating Drawer (Non-blocking directly docked in canvas) */}
+          <BlueprintPaletteModal
+            isOpen={isBlueprintPaletteOpen}
+            onClose={() => setIsBlueprintPaletteOpen(false)}
+            onAddBlueprint={handleAddBlueprintFromModal}
+            onAddNodeTemplate={handleAddNodeTemplateFromPalette}
+            scaffoldCodeEnabled={scaffoldCodeEnabled}
+            onToggleScaffoldCode={setScaffoldCodeEnabled}
+          />
         </div>
       </div>
 

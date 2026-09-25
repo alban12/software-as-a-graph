@@ -33,15 +33,16 @@ const KIND_ICONS = {
   exporter: Rocket,
 };
 
-function ViewElementBadge({ element, filePath, nodeId, onUpdateViewElement }) {
+function ViewElementBadge({ element = {}, filePath, nodeId, onUpdateViewElement }) {
+  const safeElement = element || {};
   const [isEditing, setIsEditing] = useState(false);
-  const [labelValue, setLabelValue] = useState(element.label || '');
+  const [labelValue, setLabelValue] = useState(safeElement.label || '');
   const [isSaving, setIsSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
 
   useEffect(() => {
-    setLabelValue(element.label || '');
-  }, [element.label]);
+    setLabelValue(safeElement.label || '');
+  }, [safeElement.label]);
 
   const handleSave = async (e) => {
     e?.stopPropagation?.();
@@ -165,12 +166,21 @@ function ViewElementBadge({ element, filePath, nodeId, onUpdateViewElement }) {
   );
 }
 
-function CustomNode({ id, data, selected }) {
-  const [collapsed, setCollapsed] = useState(data.canvasMeta?.isCollapsed ?? false);
-  const [showScreenPreview, setShowScreenPreview] = useState(true);
-  const IconComponent = KIND_ICONS[data.kind] || Cpu;
+function CustomNode({ id, data = {}, selected }) {
+  const safeData = data || {};
+  if (!safeData.kind && !safeData.name) {
+    return (
+      <div className={`saag-node kind-service ${selected ? 'selected' : ''}`} style={{ minWidth: 140, padding: 12 }}>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Node {id || 'uninitialized'}</span>
+      </div>
+    );
+  }
 
-  const isViewNode = data.kind === 'view';
+  const [collapsed, setCollapsed] = useState(safeData.canvasMeta?.isCollapsed ?? false);
+  const [showScreenPreview, setShowScreenPreview] = useState(true);
+  const IconComponent = KIND_ICONS[safeData.kind] || Cpu;
+
+  const isViewNode = safeData.kind === 'view';
 
   const toggleCollapse = (e) => {
     e.stopPropagation();

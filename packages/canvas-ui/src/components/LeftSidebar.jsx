@@ -31,6 +31,8 @@ export default function LeftSidebar({
   mlConstraintData,
   onOpenMlDiagnostics,
   // Tool Lenses
+  isBlueprintPaletteOpen = false,
+  onToggleBlueprintPalette,
   isTreeNavigatorOpen = false,
   onToggleTreeNavigator,
   onOpenSimulation,
@@ -208,6 +210,20 @@ export default function LeftSidebar({
           </div>
 
           <div className="sidebar-tools-grid">
+            {onToggleBlueprintPalette && (
+              <button
+                className={`sidebar-tool-row blueprint-palette-tool-btn ${isBlueprintPaletteOpen ? 'active' : ''}`}
+                onClick={onToggleBlueprintPalette}
+                title="Expand Nodes & Capability Blueprints Palette (Shift+A or ⌘K)"
+              >
+                <div className="tool-row-left">
+                  <Sparkles size={14} color="#bf5af2" />
+                  <span style={{ color: isBlueprintPaletteOpen ? '#ffffff' : '#d8b4fe' }}>Palette & Library</span>
+                </div>
+                <span className="tool-status-pill purple">16 Items</span>
+              </button>
+            )}
+
             <button
               className={`sidebar-tool-row ${isTreeNavigatorOpen ? 'active' : ''}`}
               onClick={onToggleTreeNavigator}

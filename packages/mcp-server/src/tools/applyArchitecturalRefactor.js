@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { resolveProjectGraph } from '../projectResolver.js';
 import { verifyGraph } from '../verifier.js';
+import { validateSafePath, safeWriteFileAtomic } from '../fsUtils.js';
 
 export const applyArchitecturalRefactorSchema = {
   name: 'apply_architectural_refactor',
@@ -60,10 +61,23 @@ export async function executeApplyArchitecturalRefactor(args = {}) {
   const backups = new Map(); // path -> originalContent
 
   try {
+    // 1. Pre-validate all file paths against traversal before mutating any files
     for (const change of args.changes) {
-      const fullPath = path.isAbsolute(change.filePath)
+      if (!change.filePath) {
+        throw new Error('Each change must specify a "filePath".');
+      }
+      const rawTarget = path.isAbsolute(change.filePath)
         ? change.filePath
         : path.resolve(baseDir, change.filePath);
+      validateSafePath(rawTarget, baseDir);
+    }
+
+    // 2. Perform file operations with atomic writes and backup tracking
+    for (const change of args.changes) {
+      const rawTarget = path.isAbsolute(change.filePath)
+        ? change.filePath
+        : path.resolve(baseDir, change.filePath);
+      const fullPath = validateSafePath(rawTarget, baseDir);
 
       // Record backup if file currently exists
       if (fs.existsSync(fullPath)) {
@@ -76,11 +90,7 @@ export async function executeApplyArchitecturalRefactor(args = {}) {
         if (typeof change.content !== 'string') {
           throw new Error(`Change for "${change.filePath}" with action "${change.action}" requires a "content" string.`);
         }
-        const parentDir = path.dirname(fullPath);
-        if (!fs.existsSync(parentDir)) {
-          fs.mkdirSync(parentDir, { recursive: true });
-        }
-        fs.writeFileSync(fullPath, change.content, 'utf8');
+        safeWriteFileAtomic(fullPath, change.content);
         modifiedPaths.push({ action: change.action, path: fullPath });
       } else if (change.action === 'delete') {
         if (fs.existsSync(fullPath)) {
@@ -101,7 +111,7 @@ export async function executeApplyArchitecturalRefactor(args = {}) {
         nodes: { ...graph.nodes, ...(args.graphPatch.nodes || {}) },
         edges: { ...graph.edges, ...(args.graphPatch.edges || {}) }
       };
-      fs.writeFileSync(graphPath, JSON.stringify(updatedGraph, null, 2), 'utf8');
+      safeWriteFileAtomic(graphPath, JSON.stringify(updatedGraph, null, 2));
     }
 
     // Run verification if requested
@@ -130,7 +140,7 @@ export async function executeApplyArchitecturalRefactor(args = {}) {
             fs.unlinkSync(filePath);
           }
         } else {
-          fs.writeFileSync(filePath, originalContent, 'utf8');
+          safeWriteFileAtomic(filePath, originalContent);
         }
       } catch {
         // best effort rollback
@@ -139,3 +149,4 @@ export async function executeApplyArchitecturalRefactor(args = {}) {
     throw new Error(`Refactor failed and was rolled back: ${err.message}`);
   }
 }
+

@@ -7,8 +7,64 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 
+import os from 'os';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const repoRoot = path.resolve(__dirname, '../..');
+
+const allowedRoots = [
+  repoRoot,
+  os.tmpdir(),
+  fs.existsSync(os.tmpdir()) ? fs.realpathSync(os.tmpdir()) : os.tmpdir(),
+  process.cwd()
+];
+
+/**
+ * Validate that a target path is strictly contained within allowed directories.
+ * Prevents directory traversal attacks (e.g. ../../etc/passwd).
+ */
+function validateSafePath(targetPath) {
+  if (!targetPath || typeof targetPath !== 'string') {
+    throw new Error('Invalid path provided');
+  }
+  if (targetPath.indexOf('\0') !== -1) {
+    throw new Error('Null byte detected in path');
+  }
+  const resolved = path.resolve(targetPath);
+  const isAllowed = allowedRoots.some((root) => {
+    const rootResolved = path.resolve(root);
+    const rel = path.relative(rootResolved, resolved);
+    return !rel.startsWith('..') && !path.isAbsolute(rel);
+  });
+  if (!isAllowed) {
+    throw new Error(`Access denied: path "${targetPath}" is outside allowed repository root`);
+  }
+  return resolved;
+}
+
+/**
+ * Atomic file writer. Writes to a temporary file first, then synchronously
+ * renames it onto the target file. Guarantees 0-byte corruption never occurs
+ * if the process is killed or interrupted mid-write.
+ */
+function safeWriteFileAtomic(targetPath, data) {
+  const resolved = path.resolve(targetPath);
+  const dir = path.dirname(resolved);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  const tempPath = `${resolved}.tmp.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    fs.writeFileSync(tempPath, data, 'utf8');
+    fs.renameSync(tempPath, resolved);
+  } catch (err) {
+    try {
+      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    } catch (_) {}
+    throw err;
+  }
+}
 
 // Project Registry for Live Switching & Benchmarks
 const KNOWN_PROJECTS = [
@@ -179,14 +235,11 @@ app.get('/api/graph', (req, res) => {
 app.post('/api/graph', (req, res) => {
   try {
     const updatedGraph = req.body;
-    const targetFile = req.body?.targetPath || req.query?.targetPath || graphPath;
-    const dir = path.dirname(targetFile);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
+    const requestedTarget = req.body?.targetPath || req.query?.targetPath || graphPath;
+    const targetFile = validateSafePath(requestedTarget);
 
     const formatted = JSON.stringify(updatedGraph, null, 2);
-    fs.writeFileSync(targetFile, formatted, 'utf8');
+    safeWriteFileAtomic(targetFile, formatted);
     console.log(`💾 Graph saved successfully (${Object.keys(updatedGraph.nodes || {}).length} nodes) to ${targetFile}`);
 
     if (targetFile === graphPath) {
@@ -195,7 +248,106 @@ app.post('/api/graph', (req, res) => {
     res.json({ success: true, timestamp: new Date().toISOString() });
   } catch (err) {
     console.error('Error saving graph:', err);
-    res.status(500).json({ error: err.message });
+    res.status(err.message?.includes('Access denied') ? 403 : 500).json({ error: err.message });
+  }
+});
+
+// REST: Scaffold Blueprint & Materialize Starter Code Files
+app.post('/api/scaffold-blueprint', (req, res) => {
+  try {
+    const { blueprintId, files = [], newNodes = [], newEdges = [], scaffoldCode = true } = req.body;
+    if (!blueprintId) {
+      return res.status(400).json({ error: 'Missing blueprintId' });
+    }
+
+    const currentProject = KNOWN_PROJECTS.find((p) => p.id === activeProjectId);
+    const baseDir = currentProject?.sourceDir || path.dirname(graphPath);
+    const scaffoldedFiles = [];
+
+    // 1. Scaffold starter code files if enabled
+    if (scaffoldCode && Array.isArray(files) && files.length > 0) {
+      for (const file of files) {
+        if (!file.filePath || !file.content) continue;
+
+        let fullPath;
+        if (path.isAbsolute(file.filePath)) {
+          fullPath = file.filePath;
+        } else if (activeProjectId === 'landmarks') {
+          fullPath = path.resolve(__dirname, '../../benchmarks/Landmarks/Landmarks', file.filePath);
+        } else if (activeProjectId === 'makeitso') {
+          fullPath = path.resolve(__dirname, '../../benchmarks/MakeItSo/code/frontend/MakeItSo', file.filePath);
+        } else if (activeProjectId === 'authsample') {
+          fullPath = path.resolve(__dirname, '../../examples/ios-auth-sample/Sources', file.filePath);
+        } else if (activeProjectId === 'ml_pipeline') {
+          fullPath = path.resolve(__dirname, '../../benchmarks/ML', path.basename(file.filePath));
+        } else if (activeProjectId === 'agent_orchestrator') {
+          fullPath = path.resolve(__dirname, '../../benchmarks/Agents', path.basename(file.filePath));
+        } else {
+          fullPath = path.resolve(baseDir, file.filePath);
+        }
+
+        const safePath = validateSafePath(fullPath);
+        safeWriteFileAtomic(safePath, file.content);
+        scaffoldedFiles.push({
+          filePath: file.filePath,
+          fullPath: safePath,
+          sizeBytes: Buffer.byteLength(file.content, 'utf8')
+        });
+        console.log(`📦 Blueprint scaffolded file: ${safePath}`);
+      }
+    }
+
+    // 2. Persist new nodes and edges into active graph
+    let updatedGraph = null;
+    if (fs.existsSync(graphPath)) {
+      const raw = fs.readFileSync(graphPath, 'utf8');
+      updatedGraph = JSON.parse(raw);
+      if (!updatedGraph.nodes) updatedGraph.nodes = {};
+      if (!updatedGraph.edges) updatedGraph.edges = {};
+
+      newNodes.forEach((node) => {
+        const nodeData = node.data || node;
+        updatedGraph.nodes[node.id] = {
+          ...nodeData,
+          id: node.id,
+          position: node.position || { x: 200, y: 200 }
+        };
+      });
+
+      newEdges.forEach((edge) => {
+        const edgeId = edge.id || `edge_${edge.source}_to_${edge.target}`;
+        updatedGraph.edges[edgeId] = {
+          id: edgeId,
+          sourceNodeId: edge.source,
+          targetNodeId: edge.target,
+          sourceHandle: edge.sourceHandle,
+          targetHandle: edge.targetHandle,
+          edgeKind: edge.data?.edgeKind || edge.edgeKind || 'dataflow',
+          contract: edge.data?.contract || edge.contract || null,
+          label: edge.label || null
+        };
+      });
+
+      safeWriteFileAtomic(graphPath, JSON.stringify(updatedGraph, null, 2));
+      console.log(`💾 Blueprint saved ${newNodes.length} nodes and ${newEdges.length} edges to ${graphPath}`);
+      broadcastGraph(updatedGraph, {
+        source: 'BLUEPRINT_SCAFFOLD',
+        blueprintId,
+        scaffoldedFilesCount: scaffoldedFiles.length
+      });
+    }
+
+    res.json({
+      success: true,
+      blueprintId,
+      scaffoldedFiles,
+      nodesAdded: newNodes.length,
+      edgesAdded: newEdges.length,
+      graph: updatedGraph
+    });
+  } catch (err) {
+    console.error('Error scaffolding blueprint:', err);
+    res.status(err.message?.includes('Access denied') ? 403 : 500).json({ error: err.message });
   }
 });
 
@@ -218,13 +370,13 @@ app.post('/api/save-test', (req, res) => {
       targetPath = path.resolve(__dirname, '../..', targetPath);
     }
 
-    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-    fs.writeFileSync(targetPath, code, 'utf8');
-    console.log(`💾 Swift Test written successfully to: ${targetPath}`);
-    res.json({ success: true, path: targetPath });
+    const safeTarget = validateSafePath(targetPath);
+    safeWriteFileAtomic(safeTarget, code);
+    console.log(`💾 Swift Test written successfully to: ${safeTarget}`);
+    res.json({ success: true, path: safeTarget });
   } catch (err) {
     console.error('Error writing test:', err);
-    res.status(500).json({ error: err.message });
+    res.status(err.message?.includes('Access denied') ? 403 : 500).json({ error: err.message });
   }
 });
 
@@ -242,9 +394,11 @@ app.post('/api/apply-refactor', (req, res) => {
       for (const change of plan.swiftChanges) {
         if (!change.filePath) continue;
 
-        let targetFilePath = path.isAbsolute(change.filePath)
+        let rawTarget = path.isAbsolute(change.filePath)
           ? change.filePath
           : path.resolve(sourceDir, change.filePath);
+
+        const targetFilePath = validateSafePath(rawTarget);
 
         if (change.action === 'delete') {
           if (fs.existsSync(targetFilePath)) {
@@ -261,8 +415,7 @@ app.post('/api/apply-refactor', (req, res) => {
 
         if (!change.code) continue;
 
-        fs.mkdirSync(path.dirname(targetFilePath), { recursive: true });
-        fs.writeFileSync(targetFilePath, change.code, 'utf8');
+        safeWriteFileAtomic(targetFilePath, change.code);
         console.log(`📝 Refactor wrote ${change.action}: ${targetFilePath}`);
         writtenFiles.push({
           filePath: change.filePath,
@@ -297,7 +450,7 @@ app.post('/api/apply-refactor', (req, res) => {
             });
           }
 
-          fs.writeFileSync(graphPath, JSON.stringify(updatedGraph, null, 2), 'utf8');
+          safeWriteFileAtomic(graphPath, JSON.stringify(updatedGraph, null, 2));
           console.log(`💾 Refactor updated graph architecture in ${graphPath}`);
           broadcastGraph(updatedGraph);
         }
@@ -314,7 +467,7 @@ app.post('/api/apply-refactor', (req, res) => {
     });
   } catch (err) {
     console.error('Error applying refactor:', err);
-    res.status(500).json({ error: err.message });
+    res.status(err.message?.includes('Access denied') ? 403 : 500).json({ error: err.message });
   }
 });
 
@@ -352,8 +505,9 @@ app.post('/api/update-view-element', (req, res) => {
     if (!fs.existsSync(fullSourcePath)) {
       return res.status(404).json({ error: `Source file not found at: ${fullSourcePath}` });
     }
+    const safeSourcePath = validateSafePath(fullSourcePath);
 
-    let sourceContent = fs.readFileSync(fullSourcePath, 'utf8');
+    let sourceContent = fs.readFileSync(safeSourcePath, 'utf8');
     const sourceLines = sourceContent.split('\n');
 
     let updated = false;
@@ -376,8 +530,8 @@ app.post('/api/update-view-element', (req, res) => {
     }
 
     if (updated) {
-      fs.writeFileSync(fullSourcePath, sourceContent, 'utf8');
-      console.log(`📝 Reconciled ${fullSourcePath}: replaced "${oldLabel}" with "${newLabel}"`);
+      safeWriteFileAtomic(safeSourcePath, sourceContent);
+      console.log(`📝 Reconciled ${safeSourcePath}: replaced "${oldLabel}" with "${newLabel}"`);
 
       if (fs.existsSync(graphPath)) {
         const rawGraph = JSON.parse(fs.readFileSync(graphPath, 'utf8'));
@@ -391,10 +545,10 @@ app.post('/api/update-view-element', (req, res) => {
             });
           }
         });
-        fs.writeFileSync(graphPath, JSON.stringify(rawGraph, null, 2), 'utf8');
+        safeWriteFileAtomic(graphPath, JSON.stringify(rawGraph, null, 2));
         broadcastGraph(rawGraph, {
           source: 'INLINE_EDIT',
-          changedFile: path.basename(filePath),
+          changedFile: path.basename(safeSourcePath),
           newLabel,
           elementId,
           timestamp: Date.now()
@@ -407,7 +561,7 @@ app.post('/api/update-view-element', (req, res) => {
     }
   } catch (err) {
     console.error('Error updating view element:', err);
-    res.status(500).json({ error: err.message });
+    res.status(err.message?.includes('Access denied') ? 403 : 500).json({ error: err.message });
   }
 });
 
@@ -420,14 +574,14 @@ app.post('/api/save-agent-scope', (req, res) => {
     }
 
     const scopeDir = path.dirname(graphPath);
-    const scopePath = path.join(scopeDir, 'agent-scope.json');
-    fs.writeFileSync(scopePath, JSON.stringify(scope, null, 2), 'utf8');
+    const scopePath = validateSafePath(path.join(scopeDir, 'agent-scope.json'));
+    safeWriteFileAtomic(scopePath, JSON.stringify(scope, null, 2));
 
     console.log(`🤖 Agent scope "${scope.name}" saved to: ${scopePath}`);
     res.json({ success: true, scope, path: scopePath });
   } catch (err) {
     console.error('Error saving agent scope:', err);
-    res.status(500).json({ error: err.message });
+    res.status(err.message?.includes('Access denied') ? 403 : 500).json({ error: err.message });
   }
 });
 
@@ -522,8 +676,40 @@ app.post('/api/validate-agent-scope', (req, res) => {
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
 
+wss.on('connection', (ws) => {
+  ws.isAlive = true;
+  ws.on('pong', () => {
+    ws.isAlive = true;
+  });
+  ws.on('message', (data) => {
+    try {
+      const msg = JSON.parse(data.toString());
+      if (msg.type === 'PONG') {
+        ws.isAlive = true;
+      }
+    } catch (_) {}
+  });
+});
+
+let heartbeatInterval = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) {
+      return ws.terminate();
+    }
+    ws.isAlive = false;
+    try {
+      ws.ping();
+      if (ws.readyState === 1) { // OPEN
+        ws.send(JSON.stringify({ type: 'PING' }));
+      }
+    } catch (_) {}
+  });
+}, 30000);
+
+heartbeatInterval.unref?.();
+
 function broadcastGraph(graph, meta = {}) {
-  const payload = JSON.stringify({ type: 'GRAPH_UPDATED', graph, ...meta });
+  const payload = JSON.stringify({ type: 'GRAPH_UPDATED', graph, meta, ...meta });
   wss.clients.forEach((client) => {
     if (client.readyState === 1) { // OPEN
       client.send(payload);
@@ -790,13 +976,19 @@ function setupSwiftFileWatcher() {
   }
 
   try {
-    currentSwiftWatcher = fs.watch(project.sourceDir, { recursive: true }, (eventType, filename) => {
+    const isRecursiveSupported = process.platform === 'darwin' || process.platform === 'win32';
+    const watchOpts = isRecursiveSupported ? { recursive: true } : {};
+    currentSwiftWatcher = fs.watch(project.sourceDir, watchOpts, (eventType, filename) => {
       if (!filename || !filename.endsWith('.swift')) return;
       if (
         filename.includes('.build') ||
         filename.includes('.git') ||
         filename.includes('.index-build') ||
-        filename.startsWith('.')
+        filename.startsWith('.') ||
+        filename.endsWith('~') ||
+        filename.endsWith('.swp') ||
+        filename.endsWith('.tmp') ||
+        filename.endsWith('4913')
       ) {
         return;
       }
@@ -816,7 +1008,7 @@ function setupSwiftFileWatcher() {
             const { updated } = reconcileSwiftASTChange(fullPath, graph, project);
 
             if (updated) {
-              fs.writeFileSync(graphPath, JSON.stringify(graph, null, 2), 'utf8');
+              safeWriteFileAtomic(graphPath, JSON.stringify(graph, null, 2));
               console.log(`💾 Reconciled AST saved to ${graphPath}`);
             }
 
@@ -837,6 +1029,29 @@ function setupSwiftFileWatcher() {
   }
 }
 
+function gracefulShutdown(signal = 'SIGTERM') {
+  console.log(`\n🛑 Received ${signal}. Shutting down SaaG Bridge Daemon gracefully...`);
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+  }
+  if (currentWatcher) {
+    try { currentWatcher.close(); } catch (_) {}
+  }
+  if (currentSwiftWatcher) {
+    try { currentSwiftWatcher.close(); } catch (_) {}
+  }
+  wss.clients.forEach((client) => {
+    try { client.close(1001, 'Server shutting down'); } catch (_) {}
+  });
+  wss.close(() => {
+    server.close(() => {
+      console.log('✅ SaaG Bridge Daemon shut down cleanly.');
+      process.exit(0);
+    });
+  });
+  setTimeout(() => process.exit(0), 1500).unref();
+}
+
 export {
   app,
   server,
@@ -846,7 +1061,10 @@ export {
   setupFileWatcher,
   setupSwiftFileWatcher,
   parseSwiftASTFile,
-  reconcileSwiftASTChange
+  reconcileSwiftASTChange,
+  validateSafePath,
+  safeWriteFileAtomic,
+  gracefulShutdown
 };
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
@@ -858,4 +1076,7 @@ if (isMain) {
   server.listen(PORT, () => {
     console.log(`🚀 SaaG Bridge Daemon listening at http://localhost:${PORT}`);
   });
+
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 }

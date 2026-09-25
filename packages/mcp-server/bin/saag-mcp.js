@@ -155,7 +155,18 @@ function runListTools() {
 function runStdioServer() {
   process.stderr.write(`[saag-mcp] Starting SaaG Model Context Protocol server v${SERVER_METADATA.version} over stdio...\n`);
   const server = new McpServer();
-  server.start(process.stdin, process.stdout);
+  const rl = server.start(process.stdin, process.stdout);
+
+  const cleanup = () => {
+    try {
+      rl.close();
+    } catch (_) {}
+    process.exit(0);
+  };
+
+  process.stdin.on('end', cleanup);
+  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', cleanup);
 }
 
 // Route command

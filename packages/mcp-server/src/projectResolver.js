@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -95,6 +96,21 @@ export function resolveProjectGraph(projectRef, workspaceRoot = findWorkspaceRoo
   const resolvedPath = path.isAbsolute(projectRef)
     ? projectRef
     : path.resolve(workspaceRoot, projectRef);
+
+  const allowedRoots = [
+    workspaceRoot,
+    os.tmpdir(),
+    fs.existsSync(os.tmpdir()) ? fs.realpathSync(os.tmpdir()) : os.tmpdir(),
+    process.cwd()
+  ];
+  const isAllowed = allowedRoots.some((root) => {
+    const rootResolved = path.resolve(root);
+    const rel = path.relative(rootResolved, resolvedPath);
+    return !rel.startsWith('..') && !path.isAbsolute(rel);
+  });
+  if (!isAllowed) {
+    throw new Error(`Access denied: project path "${projectRef}" is outside allowed repository bounds`);
+  }
 
   if (fs.existsSync(resolvedPath)) {
     const stat = fs.statSync(resolvedPath);
