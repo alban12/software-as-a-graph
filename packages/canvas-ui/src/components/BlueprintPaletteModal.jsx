@@ -20,17 +20,115 @@ import {
 import { CAPABILITY_BLUEPRINTS } from '../blueprints/blueprintsRegistry';
 import { SINGLE_NODE_TEMPLATES } from '../blueprints/singleNodesRegistry';
 
+/**
+ * Creates a compact macOS-style drag badge for native HTML5 drag-and-drop.
+ * Prevents dragging the entire large 350px card across the canvas.
+ */
+function createSaagDragGhost(icon, title, badge, isBlueprint) {
+  const ghost = document.createElement('div');
+  ghost.className = `saag-native-drag-ghost ${isBlueprint ? 'blueprint' : 'node'}`;
+  ghost.style.position = 'fixed';
+  ghost.style.top = '-9999px';
+  ghost.style.left = '-9999px';
+  ghost.style.zIndex = '99999';
+  ghost.style.pointerEvents = 'none';
+
+  ghost.innerHTML = `
+    <div class="drag-ghost-inner">
+      <span class="drag-ghost-icon">${icon || '📦'}</span>
+      <div class="drag-ghost-content">
+        <div class="drag-ghost-title">${title}</div>
+        <div class="drag-ghost-badge">${badge || (isBlueprint ? 'Blueprint' : 'Node')}</div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(ghost);
+  return ghost;
+}
+
 export default function BlueprintPaletteModal({
   isOpen,
   onClose,
   onAddBlueprint,
   onAddNodeTemplate,
   scaffoldCodeEnabled = true,
-  onToggleScaffoldCode
+  onToggleScaffoldCode,
+  onPointerDragStart,
+  onPointerDragMove,
+  onPointerDragEnd
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCatalog, setActiveCatalog] = useState('all'); // 'all' | 'blueprints' | 'nodes'
   const [activeDomain, setActiveDomain] = useState('all'); // 'all' | 'ios' | 'agents' | 'ml'
+  const [isDraggingItem, setIsDraggingItem] = useState(false);
+
+  // Pro direct-manipulation pointer drag handler (works across all pointer types, trackpad, mouse)
+  const handleCardPointerDown = (e, item, isBlueprint) => {
+    if (e.button !== 0) return;
+    if (e.target.closest('button') || e.target.closest('a') || e.target.closest('input')) return;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let dragInitiated = false;
+
+    const handlePointerMove = (moveEvt) => {
+      const dx = moveEvt.clientX - startX;
+      const dy = moveEvt.clientY - startY;
+
+      if (!dragInitiated && Math.hypot(dx, dy) > 4) {
+        dragInitiated = true;
+        moveEvt.preventDefault();
+        setIsDraggingItem(true);
+        document.body.style.cursor = 'grabbing';
+        window.__saagActiveDragItem = {
+          type: isBlueprint ? 'blueprint' : 'node',
+          isBlueprint,
+          item,
+          title: isBlueprint ? item.title : item.name,
+          icon: item.icon,
+          badge: item.badge
+        };
+        onPointerDragStart?.({
+          type: isBlueprint ? 'blueprint' : 'node',
+          isBlueprint,
+          item,
+          clientX: moveEvt.clientX,
+          clientY: moveEvt.clientY
+        });
+      }
+
+      if (dragInitiated) {
+        moveEvt.preventDefault();
+        onPointerDragMove?.({
+          clientX: moveEvt.clientX,
+          clientY: moveEvt.clientY
+        });
+      }
+    };
+
+    const handlePointerUp = (upEvt) => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+      document.body.style.cursor = '';
+
+      if (dragInitiated) {
+        setIsDraggingItem(false);
+        window.__saagActiveDragItem = null;
+        onPointerDragEnd?.({
+          type: isBlueprint ? 'blueprint' : 'node',
+          isBlueprint,
+          item,
+          clientX: upEvt.clientX,
+          clientY: upEvt.clientY
+        });
+      }
+    };
+
+    window.addEventListener('pointermove', handlePointerMove, { passive: false });
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -82,27 +180,27 @@ export default function BlueprintPaletteModal({
   if (!isOpen) return null;
 
   return (
-    <aside className="saag-palette-drawer glass-panel" aria-label="Nodes and Capability Blueprints Palette">
+    <aside className={`saag-library-hud saag-palette-drawer ${isDraggingItem ? 'is-dragging' : ''}`} aria-label="Component and Blueprint Library">
       {/* Header */}
       <div className="palette-drawer-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div className="palette-icon-badge">
-            <Sparkles size={16} color="var(--accent-purple, #bf5af2)" />
+            <Plus size={16} color="var(--accent-blue, #0a84ff)" />
           </div>
           <div>
-            <h3 className="palette-title">Palette & Library</h3>
+            <h3 className="palette-title">Library</h3>
             <p className="palette-subtitle">
-              Drag components directly onto the canvas
+              Double-click or drag to canvas
             </p>
           </div>
         </div>
         <button
           className="drawer-close-btn"
           onClick={onClose}
-          title="Collapse Palette (Esc or Shift+A)"
-          aria-label="Close Palette"
+          title="Close Library (Esc or ⇧⌘L)"
+          aria-label="Close Library"
         >
-          <X size={15} />
+          <X size={14} />
         </button>
       </div>
 
@@ -221,13 +319,9 @@ export default function BlueprintPaletteModal({
                   <div
                     key={bp.id}
                     className="palette-item-card blueprint-style"
-                    draggable
-                    onDragStart={(e) => {
-                      const payload = { type: 'blueprint', blueprint: bp };
-                      e.dataTransfer.setData('application/saag-dnd', JSON.stringify(payload));
-                      e.dataTransfer.setData('application/saag-blueprint', JSON.stringify(bp));
-                      e.dataTransfer.effectAllowed = 'copy';
-                    }}
+                    onPointerDown={(e) => handleCardPointerDown(e, bp, true)}
+                    onDoubleClick={() => onAddBlueprint?.(bp)}
+                    title="Drag onto canvas, or double-click to insert"
                   >
                     <div className="palette-item-top">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -292,13 +386,9 @@ export default function BlueprintPaletteModal({
                   <div
                     key={nt.id}
                     className="palette-item-card node-style"
-                    draggable
-                    onDragStart={(e) => {
-                      const payload = { type: 'node', nodeTemplate: nt };
-                      e.dataTransfer.setData('application/saag-dnd', JSON.stringify(payload));
-                      e.dataTransfer.setData('application/saag-node', JSON.stringify(nt));
-                      e.dataTransfer.effectAllowed = 'copy';
-                    }}
+                    onPointerDown={(e) => handleCardPointerDown(e, nt, false)}
+                    onDoubleClick={() => onAddNodeTemplate?.(nt)}
+                    title="Drag onto canvas, or double-click to insert"
                   >
                     <div className="palette-item-top">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

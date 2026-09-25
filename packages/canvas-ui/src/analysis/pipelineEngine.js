@@ -30,6 +30,7 @@ export function computeTemporalPipelineLayout(visibleNodeList, rawGraph, options
   // If this graph is an application tree (e.g. Landmarks, MakeItSo), lay it out horizontally
   const tree = options.treeData || (rawGraph?.nodes ? decomposeAppTree(rawGraph) : null);
   const isApp = Boolean(
+    (rawGraph?.metadata?.projectType === 'ios' || tree?.rootAppNode?.kind === 'app') &&
     tree?.rootAppNode &&
     tree?.branches?.length >= 2 &&
     tree?.branches[0]?.nodes?.length >= 2

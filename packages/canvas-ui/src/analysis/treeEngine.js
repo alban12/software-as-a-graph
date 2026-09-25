@@ -751,9 +751,14 @@ export function computeMultiTierTreeCoordinates(visibleNodeList, treeData, isFul
     let unplacedY = branchStartY;
     const unplacedX = shelfStartX + shelfCols * (shelfColWidth + 40) + 40;
     unplaced.forEach((node) => {
-      const dim = getNodeDimensions(node);
-      positions[node.id] = { x: unplacedX, y: unplacedY };
-      unplacedY += dim.height + 40;
+      const customPos = node.canvasMeta?.position || (node.position?.x != null && node.position?.y != null ? node.position : null);
+      if (customPos) {
+        positions[node.id] = customPos;
+      } else {
+        const dim = getNodeDimensions(node);
+        positions[node.id] = { x: unplacedX, y: unplacedY };
+        unplacedY += dim.height + 40;
+      }
     });
   }
 

@@ -1,8 +1,10 @@
+import React from 'react';
 import {
   PanelLeft,
+  PanelRight,
   Plus,
   Save,
-  Sparkles
+  Bot
 } from 'lucide-react';
 
 export default function Toolbar({
@@ -22,14 +24,15 @@ export default function Toolbar({
   currentDomain = 'ios',
   isLeftSidebarOpen = true,
   onToggleLeftSidebar,
-  onOpenAddModal,
   onOpenBlueprintPalette,
   isBlueprintPaletteOpen = false,
   isConnected = false,
   agentNodeCount = 0,
   isScopeIsolationActive = false,
   onToggleScopeIsolation,
-  onOpenAgentScope
+  onOpenAgentScope,
+  isInspectorOpen = false,
+  onToggleInspector
 }) {
   const activeProject = projects.find((p) => p.id === activeProjectId);
   const domainIcons = {
@@ -39,172 +42,165 @@ export default function Toolbar({
   };
 
   const domainLabels = {
-    ios: 'iOS',
-    agents: 'Agent',
-    ml: 'ML'
+    ios: 'iOS Clean Architecture',
+    agents: 'Autonomous Agent Swarm',
+    ml: 'ML Systems & Hardware'
   };
 
   return (
-    <header className="saag-toolbar glass-panel">
-      {/* Left Section: Sidebar Toggle & Active Scheme Breadcrumb */}
-      <div className="toolbar-left">
+    <header className="saag-toolbar" role="toolbar" aria-label="Main Application Toolbar">
+      {/* Zone 1: Leading (Navigator Toggle & Clean Project Identity) */}
+      <div className="toolbar-zone toolbar-leading">
         <button
-          className={`btn-icon-square sidebar-toggle-btn ${!isLeftSidebarOpen ? 'highlight' : ''}`}
+          className={`toolbar-icon-btn ${isLeftSidebarOpen ? 'active' : ''}`}
           onClick={onToggleLeftSidebar}
-          title={isLeftSidebarOpen ? "Collapse Sidebar (⌘B)" : "Expand Sidebar (⌘B)"}
-          aria-label="Toggle Left Navigation Sidebar"
+          title={isLeftSidebarOpen ? "Hide Navigator (⌘B)" : "Show Navigator (⌘B)"}
+          aria-label="Toggle Navigator Sidebar"
         >
-          <PanelLeft size={16} />
+          <PanelLeft size={15} />
         </button>
 
-        <div className="project-breadcrumb-pill">
-          <span className="domain-badge-icon">{domainIcons[currentDomain] || '📱'}</span>
-          <span className="project-breadcrumb-name">
-            {activeProject?.name || metadata?.projectName || 'Landmarks'}
-          </span>
-          <span className="scheme-tag">{domainLabels[currentDomain] || 'App'}</span>
+        <div className="toolbar-project-identity">
+          <span className="project-icon">{domainIcons[currentDomain] || '📱'}</span>
+          <div className="project-titles">
+            <span className="project-title">
+              {activeProject?.name?.replace(/\s*\(.*\)/, '') || metadata?.projectName || 'Landmarks'}
+            </span>
+            <span className="project-subtitle">
+              {domainLabels[currentDomain] || 'Clean Architecture'}
+            </span>
+          </div>
         </div>
+      </div>
 
-        {/* Abstraction Level Selector (L1 / L2 / L3) */}
-        <div className="abstraction-level-selector" role="group" aria-label="Abstraction Level">
+      {/* Zone 2: Center (macOS Standard Segmented Controls) */}
+      <div className="toolbar-zone toolbar-center">
+        {/* Layout Perspective Lens (Tree, Pipeline, Mesh) */}
+        <div className="macos-segmented-control" role="radiogroup" aria-label="Perspective Lens">
           <button
-            className={`level-segment ${abstractionLevel === 'L1' ? 'active' : ''}`}
-            onClick={() => onLevelChange && onLevelChange('L1')}
-            title="L1: High-level screens, primary navigation, and central architectural components"
-          >
-            <span className="level-icon">🏛️</span>
-            <span>{currentDomain === 'ios' ? 'L1 Journey' : 'L1 Architecture'}</span>
-          </button>
-          <button
-            className={`level-segment ${abstractionLevel === 'L2' ? 'active' : ''}`}
-            onClick={() => onLevelChange && onLevelChange('L2')}
-            title="L2: Detailed subviews, compound widgets, and service adapters"
-          >
-            <span className="level-icon">🧩</span>
-            <span>{currentDomain === 'ios' ? 'L2 Components' : 'L2 Pipelines'}</span>
-          </button>
-          <button
-            className={`level-segment ${abstractionLevel === 'L3' ? 'active' : ''}`}
-            onClick={() => onLevelChange && onLevelChange('L3')}
-            title="L3: Execution units, kernels, test suites & low-level details"
-          >
-            <span className="level-icon">🔬</span>
-            <span>{currentDomain === 'ios' ? 'L3 Details' : 'L3 Execution'}</span>
-          </button>
-        </div>
-
-        {/* Layout Mode Switcher: 3 Fluid Lenses (Tree, Pipeline, Mesh) */}
-        <div className="layout-mode-selector" role="group" aria-label="Layout Perspective Lens">
-          <button
-            className={`level-segment ${layoutMode === 'tree' ? 'active' : ''}`}
+            className={`segmented-item ${layoutMode === 'tree' ? 'active' : ''}`}
             onClick={() => onLayoutModeChange && onLayoutModeChange('tree')}
-            title="Tree View: Hierarchical top-down containment and navigation stacks"
+            title="Tree View: Hierarchical top-down containment & navigation stacks"
+            role="radio"
+            aria-checked={layoutMode === 'tree'}
           >
-            <span>🌳 Tree</span>
+            <span>Tree</span>
           </button>
           <button
-            className={`level-segment ${layoutMode === 'pipeline' ? 'active' : ''}`}
+            className={`segmented-item ${layoutMode === 'pipeline' ? 'active' : ''}`}
             onClick={() => onLayoutModeChange && onLayoutModeChange('pipeline')}
-            title="Pipeline View: Left-to-right temporal causality and dataflow execution stages"
+            title="Pipeline View: Left-to-right temporal causality & execution flow"
+            role="radio"
+            aria-checked={layoutMode === 'pipeline'}
           >
-            <span>⏩ Pipeline</span>
+            <span>Pipeline</span>
           </button>
           <button
-            className={`level-segment ${layoutMode === 'mesh' ? 'active' : ''}`}
+            className={`segmented-item ${layoutMode === 'mesh' ? 'active' : ''}`}
             onClick={() => onLayoutModeChange && onLayoutModeChange('mesh')}
-            title="Mesh View: Freeform graph layout & custom node disposition"
+            title="Mesh View: Freeform organic graph & custom disposition"
+            role="radio"
+            aria-checked={layoutMode === 'mesh'}
           >
-            <span>🕸️ Mesh</span>
+            <span>Mesh</span>
+          </button>
+        </div>
+
+        <div className="toolbar-separator" />
+
+        {/* Abstraction Tier Picker (L1, L2, L3) */}
+        <div className="macos-segmented-control" role="radiogroup" aria-label="Abstraction Tier">
+          <button
+            className={`segmented-item ${abstractionLevel === 'L1' ? 'active' : ''}`}
+            onClick={() => onLevelChange && onLevelChange('L1')}
+            title="L1: High-level screens, primary navigation, and systems"
+            role="radio"
+            aria-checked={abstractionLevel === 'L1'}
+          >
+            <span>L1 Journey</span>
+          </button>
+          <button
+            className={`segmented-item ${abstractionLevel === 'L2' ? 'active' : ''}`}
+            onClick={() => onLevelChange && onLevelChange('L2')}
+            title="L2: Architecture components, services, and compound units"
+            role="radio"
+            aria-checked={abstractionLevel === 'L2'}
+          >
+            <span>L2 Architecture</span>
+          </button>
+          <button
+            className={`segmented-item ${abstractionLevel === 'L3' ? 'active' : ''}`}
+            onClick={() => onLevelChange && onLevelChange('L3')}
+            title="L3: Execution units, source lines, and primitives"
+            role="radio"
+            aria-checked={abstractionLevel === 'L3'}
+          >
+            <span>L3 Code</span>
           </button>
         </div>
       </div>
 
-      {/* Right Section: Node/Edge Stats & Quick Actions */}
-      <div className="toolbar-right">
-        {/* Live AST Sync Watcher Indicator */}
+      {/* Zone 3: Trailing (Status, Library & Utility Actions) */}
+      <div className="toolbar-zone toolbar-trailing">
+        {/* Subtle Live AST Watcher Indicator */}
         <div
-          className={`live-sync-indicator ${isConnected ? 'active' : ''}`}
+          className={`toolbar-status-badge ${isConnected ? 'online' : 'connecting'}`}
           title={
             isConnected
               ? 'Real-Time Swift AST Watcher & WebSocket Hot-Reload Active'
               : 'Connecting to SaaG Daemon...'
           }
         >
-          <span className={`pulse-dot ${isConnected ? 'green' : 'amber'}`} />
-          <span className="live-sync-label">{isConnected ? 'Live Sync' : 'Connecting...'}</span>
+          <span className={`status-dot ${isConnected ? 'green' : 'amber'}`} />
+          <span className="status-label">{isConnected ? 'Live AST' : 'Syncing'}</span>
         </div>
 
-        {/* AI Agent Scope Quick Access & Isolation Switch */}
+        {/* AI Agent Scope (Subtle macOS pill if active) */}
         {agentNodeCount > 0 && (
-          <div className="toolbar-scope-pill-group">
-            <button
-              className="toolbar-scope-badge-btn"
-              onClick={onOpenAgentScope}
-              title="Open AI Agent Scope Contracts & Prompt"
-            >
-              <span className="pulse-dot purple" />
-              <span>Scope ({agentNodeCount})</span>
-            </button>
-            <button
-              className={`toolbar-isolate-toggle ${isScopeIsolationActive ? 'active' : ''}`}
-              onClick={onToggleScopeIsolation}
-              title={
-                isScopeIsolationActive
-                  ? 'Exit Scope Isolation (Show full graph)'
-                  : 'Isolate Scope (Dim out-of-scope nodes)'
-              }
-            >
-              {isScopeIsolationActive ? '👁️ Isolated' : '👁️ Isolate'}
-            </button>
-          </div>
+          <button
+            className="toolbar-scope-pill"
+            onClick={onOpenAgentScope}
+            title="Open AI Agent Scope Contracts & Prompt"
+          >
+            <Bot size={13} color="#bf5af2" />
+            <span>Scope ({agentNodeCount})</span>
+          </button>
         )}
 
+        {/* Unified Apple-Style Library Button (+) */}
         {onOpenBlueprintPalette && (
           <button
-            className={`btn-pill toolbar-blueprint-btn ${isBlueprintPaletteOpen ? 'active' : ''}`}
+            className={`toolbar-library-btn ${isBlueprintPaletteOpen ? 'active' : ''}`}
             onClick={onOpenBlueprintPalette}
-            title={isBlueprintPaletteOpen ? "Collapse Node & Blueprint Palette (Shift+A or ⌘K)" : "Expand Node & Blueprint Palette (Shift+A or ⌘K)"}
-            aria-label="Toggle Node & Blueprint Palette"
-          >
-            <Sparkles size={13} className="blueprint-sparkle-icon" />
-            <span>Palette</span>
-          </button>
-        )}
-
-        <div
-          className="toolbar-stats-pill"
-          title={`${visibleNodeCount !== undefined ? visibleNodeCount : nodeCount} nodes visible, ${edgeCount} connections`}
-        >
-          <span className="stats-dot" />
-          <span>
-            {visibleNodeCount !== undefined && totalNodeCount !== undefined
-              ? `${visibleNodeCount}/${totalNodeCount}`
-              : nodeCount}{' '}
-            nodes
-          </span>
-          <span className="stats-separator">·</span>
-          <span>{edgeCount} edges</span>
-        </div>
-
-        {onOpenAddModal && (
-          <button
-            className="btn-icon-square toolbar-add-btn"
-            onClick={onOpenAddModal}
-            title="Add Node to Canvas (A)"
-            aria-label="Add Node"
+            title={isBlueprintPaletteOpen ? "Close Library (Esc)" : "Open Component & Blueprint Library (⇧⌘L or Shift+A)"}
+            aria-label="Toggle Component & Blueprint Library"
           >
             <Plus size={15} />
+            <span className="library-btn-text">Library</span>
           </button>
         )}
 
+        {/* Inspector Sidebar Toggle */}
+        {onToggleInspector && (
+          <button
+            className={`toolbar-icon-btn ${isInspectorOpen ? 'active' : ''}`}
+            onClick={onToggleInspector}
+            title={isInspectorOpen ? "Hide Inspector (⌥⌘0)" : "Show Inspector (⌥⌘0)"}
+            aria-label="Toggle Inspector Sidebar"
+          >
+            <PanelRight size={15} />
+          </button>
+        )}
+
+        {/* Save Button */}
         <button
-          className="btn-pill primary toolbar-quick-save"
+          className="toolbar-save-btn"
           onClick={onSave}
           disabled={isSaving}
           title="Save graph to .saag/graph.json (⌘S)"
         >
           <Save size={13} />
-          <span>{isSaving ? 'Saving...' : 'Save'}</span>
+          <span>{isSaving ? 'Saving…' : 'Save'}</span>
         </button>
       </div>
     </header>

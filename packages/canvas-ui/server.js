@@ -110,8 +110,9 @@ const KNOWN_PROJECTS = [
   }
 ];
 
-let activeProjectId = 'landmarks';
-let graphPath = KNOWN_PROJECTS[2].path;
+const initialProject = KNOWN_PROJECTS.find((p) => p.id === 'landmarks') || KNOWN_PROJECTS[0];
+let activeProjectId = initialProject.id;
+let graphPath = initialProject.path;
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--graph' && args[i + 1]) {
@@ -203,8 +204,10 @@ app.post('/api/projects/switch', (req, res) => {
     graphPath = project.path;
     console.log(`📁 Switched active project to: ${project.name} (${graphPath})`);
 
-    setupFileWatcher();
-    setupSwiftFileWatcher();
+    if (process.env.NODE_ENV !== 'test') {
+      setupFileWatcher();
+      setupSwiftFileWatcher();
+    }
 
     const content = fs.readFileSync(graphPath, 'utf8');
     const json = JSON.parse(content);
@@ -249,6 +252,137 @@ app.post('/api/graph', (req, res) => {
   } catch (err) {
     console.error('Error saving graph:', err);
     res.status(err.message?.includes('Access denied') ? 403 : 500).json({ error: err.message });
+  }
+});
+
+// REST: Delete Single Node and Connected Edges
+app.delete('/api/graph/node/:nodeId', (req, res) => {
+  try {
+    const { nodeId } = req.params;
+    if (!nodeId) return res.status(400).json({ error: 'Missing nodeId parameter' });
+
+    if (!fs.existsSync(graphPath)) {
+      return res.status(404).json({ error: 'Graph file not found' });
+    }
+
+    const raw = fs.readFileSync(graphPath, 'utf8');
+    const updatedGraph = JSON.parse(raw);
+    if (!updatedGraph.nodes) updatedGraph.nodes = {};
+    if (!updatedGraph.edges) updatedGraph.edges = {};
+
+    const nodeExists = Boolean(updatedGraph.nodes[nodeId]);
+    delete updatedGraph.nodes[nodeId];
+
+    // Remove any connected edges
+    let removedEdgesCount = 0;
+    Object.keys(updatedGraph.edges).forEach((edgeId) => {
+      const edge = updatedGraph.edges[edgeId];
+      if (edge.sourceNodeId === nodeId || edge.targetNodeId === nodeId ||
+          edge.source === nodeId || edge.target === nodeId) {
+        delete updatedGraph.edges[edgeId];
+        removedEdgesCount++;
+      }
+    });
+
+    safeWriteFileAtomic(graphPath, JSON.stringify(updatedGraph, null, 2));
+    console.log(`🗑️ Deleted node "${nodeId}" and ${removedEdgesCount} associated edges from ${graphPath}`);
+
+    broadcastGraph(updatedGraph, {
+      source: 'NODE_DELETED',
+      nodeId,
+      removedEdgesCount
+    });
+
+    res.json({
+      success: true,
+      nodeId,
+      nodeExisted: nodeExists,
+      removedEdgesCount,
+      remainingNodes: Object.keys(updatedGraph.nodes).length
+    });
+  } catch (err) {
+    console.error('Error deleting node:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// REST: Batch Delete Nodes and Edges
+app.post('/api/graph/delete-elements', (req, res) => {
+  try {
+    const { nodeIds = [], edgeIds = [] } = req.body;
+    if (!fs.existsSync(graphPath)) {
+      return res.status(404).json({ error: 'Graph file not found' });
+    }
+
+    const raw = fs.readFileSync(graphPath, 'utf8');
+    const updatedGraph = JSON.parse(raw);
+    if (!updatedGraph.nodes) updatedGraph.nodes = {};
+    if (!updatedGraph.edges) updatedGraph.edges = {};
+
+    const targetNodeIds = new Set(nodeIds);
+    const targetEdgeIds = new Set(edgeIds);
+
+    targetNodeIds.forEach((id) => {
+      delete updatedGraph.nodes[id];
+    });
+
+    Object.keys(updatedGraph.edges).forEach((eid) => {
+      const edge = updatedGraph.edges[eid];
+      if (targetEdgeIds.has(eid) ||
+          targetNodeIds.has(edge.sourceNodeId) || targetNodeIds.has(edge.targetNodeId) ||
+          targetNodeIds.has(edge.source) || targetNodeIds.has(edge.target)) {
+        delete updatedGraph.edges[eid];
+      }
+    });
+
+    safeWriteFileAtomic(graphPath, JSON.stringify(updatedGraph, null, 2));
+    console.log(`🗑️ Batch deleted ${targetNodeIds.size} nodes and ${targetEdgeIds.size} edges from ${graphPath}`);
+
+    broadcastGraph(updatedGraph, {
+      source: 'BATCH_DELETE',
+      deletedNodeCount: targetNodeIds.size,
+      deletedEdgeCount: targetEdgeIds.size
+    });
+
+    res.json({
+      success: true,
+      deletedNodeCount: targetNodeIds.size,
+      remainingNodes: Object.keys(updatedGraph.nodes).length
+    });
+  } catch (err) {
+    console.error('Error batch deleting elements:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// REST: Delete Single Edge
+app.delete('/api/graph/edge/:edgeId', (req, res) => {
+  try {
+    const { edgeId } = req.params;
+    if (!edgeId) return res.status(400).json({ error: 'Missing edgeId parameter' });
+
+    if (!fs.existsSync(graphPath)) {
+      return res.status(404).json({ error: 'Graph file not found' });
+    }
+
+    const raw = fs.readFileSync(graphPath, 'utf8');
+    const updatedGraph = JSON.parse(raw);
+    if (!updatedGraph.edges) updatedGraph.edges = {};
+
+    delete updatedGraph.edges[edgeId];
+
+    safeWriteFileAtomic(graphPath, JSON.stringify(updatedGraph, null, 2));
+    console.log(`🗑️ Deleted edge "${edgeId}" from ${graphPath}`);
+
+    broadcastGraph(updatedGraph, {
+      source: 'EDGE_DELETED',
+      edgeId
+    });
+
+    res.json({ success: true, edgeId });
+  } catch (err) {
+    console.error('Error deleting edge:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -307,10 +441,15 @@ app.post('/api/scaffold-blueprint', (req, res) => {
 
       newNodes.forEach((node) => {
         const nodeData = node.data || node;
+        const pos = node.position || { x: 200, y: 200 };
         updatedGraph.nodes[node.id] = {
           ...nodeData,
           id: node.id,
-          position: node.position || { x: 200, y: 200 }
+          position: pos,
+          canvasMeta: {
+            ...(nodeData.canvasMeta || {}),
+            position: pos
+          }
         };
       });
 
@@ -1052,6 +1191,17 @@ function gracefulShutdown(signal = 'SIGTERM') {
   setTimeout(() => process.exit(0), 1500).unref();
 }
 
+function closeWatchers() {
+  if (currentWatcher) {
+    try { currentWatcher.close(); } catch (_) {}
+    currentWatcher = null;
+  }
+  if (currentSwiftWatcher) {
+    try { currentSwiftWatcher.close(); } catch (_) {}
+    currentSwiftWatcher = null;
+  }
+}
+
 export {
   app,
   server,
@@ -1060,6 +1210,7 @@ export {
   broadcastGraph,
   setupFileWatcher,
   setupSwiftFileWatcher,
+  closeWatchers,
   parseSwiftASTFile,
   reconcileSwiftASTChange,
   validateSafePath,

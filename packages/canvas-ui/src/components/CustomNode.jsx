@@ -4,7 +4,7 @@ import {
   Layers, ChevronDown, ChevronRight, Code2, Database, Globe, Cpu,
   Smartphone, Flame, Minimize2, Maximize2, ExternalLink, Lock, Bot,
   AlertTriangle, Zap, Server, Activity, Rocket, Wrench, GitFork,
-  ShieldCheck, Brain, Edit3, Check, X as XIcon, Star
+  ShieldCheck, Brain, Edit3, Check, X as XIcon, Star, Trash2
 } from 'lucide-react';
 import ScreenPreview from './ScreenPreview';
 import FirebaseLogo from './FirebaseLogo';
@@ -262,6 +262,19 @@ function CustomNode({ id, data = {}, selected }) {
               <Maximize2 size={10} />
               <span>Debug</span>
             </button>
+            {data.onDeleteNode && (
+              <button
+                className="squeezed-action-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  data.onDeleteNode(id);
+                }}
+                title="Delete node (Del / Backspace)"
+                style={{ color: 'var(--color-danger, #ff453a)' }}
+              >
+                <Trash2 size={10} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -300,7 +313,7 @@ function CustomNode({ id, data = {}, selected }) {
             <span className="node-kind-badge">{data.kind}</span>
             {data.level && (
               <span className={`node-level-badge level-${(data.level || '').toLowerCase()}`}>
-                {data.level === 'L1_SCREEN' ? 'L1 Screen' : data.level === 'L1_SYSTEM' ? 'L1 System' : data.level === 'L2_COMPONENT' ? 'L2 Component' : data.level === 'L3_EXECUTION' ? 'L3 Execution' : 'L3 Primitive'}
+                {data.level === 'L1_SCREEN' ? 'L1 Screen' : data.level === 'L1_SYSTEM' ? 'L1 System' : data.level === 'L2_SUBSYSTEM' ? 'L2 Subsystem' : data.level === 'L2_COMPONENT' ? 'L2 Component' : data.level === 'L3_EXECUTION' ? 'L3 Execution' : 'L3 Primitive'}
               </span>
             )}
             {data.name === 'CategoryHome' && (
@@ -389,6 +402,19 @@ function CustomNode({ id, data = {}, selected }) {
             >
               <Smartphone size={12} />
               <span>UI</span>
+            </button>
+          )}
+          {data.onDeleteNode && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                data.onDeleteNode(id);
+              }}
+              className="screen-toggle-pill node-delete-btn"
+              title="Delete node (Del / Backspace)"
+              style={{ color: 'var(--color-danger, #ff453a)', padding: '3px 6px' }}
+            >
+              <Trash2 size={11} />
             </button>
           )}
           <button

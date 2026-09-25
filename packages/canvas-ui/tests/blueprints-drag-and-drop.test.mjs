@@ -240,6 +240,9 @@ test.describe('Capability Blueprints & Drag-and-Drop Scaffolding Suite', () => {
       const body = await res.json();
       assert.equal(body.success, true);
       assert.equal(body.scaffoldedFiles.length, 0, 'No files should be written when scaffoldCode is false');
+
+      // Clean up test node
+      await fetch(`${baseUrl}/api/graph/node/test_node_temp`, { method: 'DELETE' });
     });
 
     test('broadcasts real-time WebSocket event when blueprint is scaffolded', async () => {
@@ -279,6 +282,9 @@ test.describe('Capability Blueprints & Drag-and-Drop Scaffolding Suite', () => {
       const bpId = broadcastMsg.blueprintId || broadcastMsg.meta?.blueprintId;
       assert.equal(bpId, 'blueprint_supervisor_swarm');
       ws.close();
+
+      // Clean up test node
+      await fetch(`${baseUrl}/api/graph/node/node_ws_swarm_test`, { method: 'DELETE' });
     });
   });
 
@@ -342,6 +348,64 @@ test.describe('Capability Blueprints & Drag-and-Drop Scaffolding Suite', () => {
       assert.equal(res.status, 200);
       const body = await res.json();
       assert.equal(body.success, true);
+
+      // Verify node was added
+      const graphRes = await fetch(`${baseUrl}/api/graph`);
+      const graph = await graphRes.json();
+      assert.ok(graph.nodes['node_test_vm'], 'node_test_vm should be present');
+
+      // Test DELETE /api/graph/node/:nodeId and clean up
+      const delRes = await fetch(`${baseUrl}/api/graph/node/node_test_vm`, {
+        method: 'DELETE'
+      });
+      assert.equal(delRes.status, 200);
+      const delBody = await delRes.json();
+      assert.equal(delBody.success, true);
+      assert.equal(delBody.nodeId, 'node_test_vm');
+
+      // Verify node was permanently removed from graph
+      const graphAfterRes = await fetch(`${baseUrl}/api/graph`);
+      const graphAfter = await graphAfterRes.json();
+      assert.equal(graphAfter.nodes['node_test_vm'], undefined, 'node_test_vm must be deleted from graph');
+    });
+
+    test('batch deletes nodes via POST /api/graph/delete-elements', async () => {
+      // 1. Add temporary nodes
+      await fetch(`${baseUrl}/api/scaffold-blueprint`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          blueprintId: 'temp_batch_test',
+          scaffoldCode: false,
+          newNodes: [
+            { id: 'node_batch_del_1', name: 'Batch 1', kind: 'view' },
+            { id: 'node_batch_del_2', name: 'Batch 2', kind: 'viewModel' }
+          ],
+          newEdges: [
+            { id: 'edge_batch_del', source: 'node_batch_del_1', target: 'node_batch_del_2' }
+          ]
+        })
+      });
+
+      // 2. Batch delete
+      const delRes = await fetch(`${baseUrl}/api/graph/delete-elements`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nodeIds: ['node_batch_del_1', 'node_batch_del_2']
+        })
+      });
+      assert.equal(delRes.status, 200);
+      const delBody = await delRes.json();
+      assert.equal(delBody.success, true);
+      assert.equal(delBody.deletedNodeCount, 2);
+
+      // 3. Verify graph on disk
+      const graphRes = await fetch(`${baseUrl}/api/graph`);
+      const graph = await graphRes.json();
+      assert.equal(graph.nodes['node_batch_del_1'], undefined);
+      assert.equal(graph.nodes['node_batch_del_2'], undefined);
+      assert.equal(graph.edges['edge_batch_del'], undefined);
     });
   });
 });

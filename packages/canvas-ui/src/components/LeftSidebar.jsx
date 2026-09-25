@@ -42,6 +42,10 @@ export default function LeftSidebar({
   onOpenBottlenecks,
   agentNodeCount = 0,
   onOpenAgentContext,
+  // Branch & Tab Navigation
+  branches = [],
+  activeBranchId = 'all',
+  onSelectBranch,
   // Layout Actions
   onAutoLayout,
   onRearrangeAndPack,
@@ -103,19 +107,45 @@ export default function LeftSidebar({
               {iosProjects.map((p) => {
                 const isActive = p.id === activeProjectId;
                 return (
-                  <button
-                    key={p.id}
-                    className={`sidebar-project-item ${isActive ? 'active' : ''}`}
-                    onClick={() => onSwitchProject && onSwitchProject(p.id)}
-                    disabled={!p.exists}
-                    title={`${p.name}\n${p.description || ''}`}
-                  >
-                    <div className="project-item-lead">
-                      <span className={`project-status-indicator ${isActive ? 'active' : ''}`} />
-                      <span className="project-item-name">{p.name.replace(/\s*\(.*\)/, '')}</span>
-                    </div>
-                    {isActive && <span className="project-active-tag">Active</span>}
-                  </button>
+                  <React.Fragment key={p.id}>
+                    <button
+                      className={`sidebar-project-item ${isActive ? 'active' : ''}`}
+                      onClick={() => onSwitchProject && onSwitchProject(p.id)}
+                      disabled={!p.exists}
+                      title={`${p.name}\n${p.description || ''}`}
+                    >
+                      <div className="project-item-lead">
+                        <span className={`project-status-indicator ${isActive ? 'active' : ''}`} />
+                        <span className="project-item-name">{p.name.replace(/\s*\(.*\)/, '')}</span>
+                      </div>
+                      {isActive && <span className="project-active-tag">Active</span>}
+                    </button>
+                    {isActive && branches && branches.length > 0 && (
+                      <div className="sidebar-branch-sublist">
+                        <button
+                          className={`sidebar-branch-item ${activeBranchId === 'all' ? 'active' : ''}`}
+                          onClick={() => onSelectBranch && onSelectBranch('all')}
+                          title="Show all app navigation stacks"
+                        >
+                          <span className="branch-item-icon">🌐</span>
+                          <span className="branch-item-title">All Tabs</span>
+                          <span className="branch-item-count">{branches.reduce((acc, b) => acc + b.nodes.length, 0)}</span>
+                        </button>
+                        {branches.map((b) => (
+                          <button
+                            key={b.id}
+                            className={`sidebar-branch-item ${activeBranchId === b.id ? 'active' : ''}`}
+                            onClick={() => onSelectBranch && onSelectBranch(b.id)}
+                            title={`Focus on ${b.title} stack`}
+                          >
+                            <span className="branch-item-icon">{b.icon || '📱'}</span>
+                            <span className="branch-item-title">{b.title}</span>
+                            <span className="branch-item-count">{b.nodes.length}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </React.Fragment>
                 );
               })}
             </div>
