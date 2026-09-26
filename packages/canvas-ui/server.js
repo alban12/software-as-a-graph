@@ -48,7 +48,10 @@ function validateSafePath(targetPath) {
  * renames it onto the target file. Guarantees 0-byte corruption never occurs
  * if the process is killed or interrupted mid-write.
  */
+let lastInternalWriteTime = 0;
+
 function safeWriteFileAtomic(targetPath, data) {
+  lastInternalWriteTime = Date.now();
   const resolved = path.resolve(targetPath);
   const dir = path.dirname(resolved);
   if (!fs.existsSync(dir)) {
@@ -252,6 +255,30 @@ app.post('/api/graph', (req, res) => {
   } catch (err) {
     console.error('Error saving graph:', err);
     res.status(err.message?.includes('Access denied') ? 403 : 500).json({ error: err.message });
+  }
+});
+
+// REST: Update Node Position (Relaxed Freeform Drag Coordinates)
+app.post('/api/graph/node-position', (req, res) => {
+  try {
+    const { nodeId, position } = req.body;
+    if (!nodeId || !position) {
+      return res.status(400).json({ error: 'Missing nodeId or position' });
+    }
+    if (fs.existsSync(graphPath)) {
+      const raw = fs.readFileSync(graphPath, 'utf8');
+      const g = JSON.parse(raw);
+      if (g.nodes && g.nodes[nodeId]) {
+        g.nodes[nodeId].position = position;
+        if (!g.nodes[nodeId].canvasMeta) g.nodes[nodeId].canvasMeta = {};
+        g.nodes[nodeId].canvasMeta.position = position;
+        safeWriteFileAtomic(graphPath, JSON.stringify(g, null, 2));
+      }
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Failed to update node position:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -1075,8 +1102,14 @@ function setupFileWatcher() {
     try {
       currentWatcher = fs.watch(dir, (eventType, filename) => {
         if (filename === path.basename(graphPath)) {
+          if (Date.now() - lastInternalWriteTime < 1500) {
+            return;
+          }
           clearTimeout(watchDebounce);
           watchDebounce = setTimeout(() => {
+            if (Date.now() - lastInternalWriteTime < 1500) {
+              return;
+            }
             try {
               if (fs.existsSync(graphPath)) {
                 const raw = fs.readFileSync(graphPath, 'utf8');

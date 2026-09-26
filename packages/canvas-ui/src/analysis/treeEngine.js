@@ -153,7 +153,7 @@ export function detectCollisions(positions, nodeMap, paddingX = 40, paddingY = 4
       const overlapX = minDistanceX - Math.abs(diffX);
       const overlapY = minDistanceY - Math.abs(diffY);
 
-      if (overlapX > 0 && overlapY > 0) {
+      if (overlapX > 0.5 && overlapY > 0.5) {
         collisions.push({ idA, idB, overlapX, overlapY, diffX, diffY });
       }
     }
@@ -765,7 +765,7 @@ export function computeMultiTierTreeCoordinates(visibleNodeList, treeData, isFul
   // Final relaxation check to guarantee zero overlaps across any edge cases
   const nodeMap = {};
   rawList.forEach((n) => { nodeMap[n.id] = n.data || n; });
-  const relaxed = rearrangeNodes(positions, nodeMap, null, { paddingX: 20, paddingY: 20, maxIterations: 20 });
+  const relaxed = rearrangeNodes(positions, nodeMap, null, { paddingX: 20, paddingY: 20, maxIterations: 50 });
   return relaxed.positions;
 }
 

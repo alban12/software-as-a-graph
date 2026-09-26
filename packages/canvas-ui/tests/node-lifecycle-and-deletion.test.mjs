@@ -447,4 +447,220 @@ test.describe('Node Lifecycle, Deletion, Coordinate Preservation & ML Pipeline S
       assert.equal(res.status, 404);
     });
   });
+
+  test.describe('6. Multi-Node Sequential Addition & Relaxed Coordinate Drag Preservation', () => {
+    const h100NodeId = 'node_test_h100_cluster';
+    const transformerNodeId = 'node_test_feature_transformer';
+
+    test('sequentially adds H100GPUCluster and FeatureTransformer, verifying both persist and coexist', async () => {
+      // 1. Switch to ml_pipeline project
+      const switchRes = await fetch(`${baseUrl}/api/projects/switch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: 'ml_pipeline' })
+      });
+      assert.equal(switchRes.status, 200);
+
+      const h100Template = SINGLE_NODE_TEMPLATES.find((t) => t.name === 'H100GPUCluster');
+      assert.ok(h100Template, 'H100GPUCluster template must exist in registry');
+      assert.equal(h100Template.level, 'L3_EXECUTION');
+
+      const transformerTemplate = SINGLE_NODE_TEMPLATES.find((t) => t.name === 'FeatureTransformer');
+      assert.ok(transformerTemplate, 'FeatureTransformer template must exist in registry');
+      assert.equal(transformerTemplate.level, 'L2_SUBSYSTEM');
+
+      // 2. Add first node: H100GPUCluster
+      const add1 = await fetch(`${baseUrl}/api/scaffold-blueprint`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          blueprintId: 'single_h100',
+          blueprintTitle: h100Template.name,
+          newNodes: [
+            {
+              id: h100NodeId,
+              name: h100Template.name,
+              kind: h100Template.kind,
+              level: h100Template.level,
+              userAdded: true,
+              position: { x: 300, y: 400 },
+              canvasMeta: { position: { x: 300, y: 400 }, userAdded: true }
+            }
+          ],
+          newEdges: [],
+          files: [],
+          scaffoldCode: false
+        })
+      });
+      assert.equal(add1.status, 200);
+
+      const graphAfterFirst = await (await fetch(`${baseUrl}/api/graph`)).json();
+      assert.ok(graphAfterFirst.nodes[h100NodeId], 'First node (H100GPUCluster) must exist in graph');
+      assert.equal(graphAfterFirst.nodes[h100NodeId].userAdded, true);
+
+      // 3. Add second node: FeatureTransformer (subsequent node)
+      const add2 = await fetch(`${baseUrl}/api/scaffold-blueprint`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          blueprintId: 'single_transformer',
+          blueprintTitle: transformerTemplate.name,
+          newNodes: [
+            {
+              id: transformerNodeId,
+              name: transformerTemplate.name,
+              kind: transformerTemplate.kind,
+              level: transformerTemplate.level,
+              userAdded: true,
+              position: { x: 650, y: 400 },
+              canvasMeta: { position: { x: 650, y: 400 }, userAdded: true }
+            }
+          ],
+          newEdges: [],
+          files: [],
+          scaffoldCode: false
+        })
+      });
+      assert.equal(add2.status, 200);
+
+      // 4. Verify BOTH nodes coexist in graph simultaneously without first node being wiped
+      const graphAfterSecond = await (await fetch(`${baseUrl}/api/graph`)).json();
+      assert.ok(graphAfterSecond.nodes[h100NodeId], 'First node (H100GPUCluster) must STILL exist after adding second node');
+      assert.ok(graphAfterSecond.nodes[transformerNodeId], 'Second node (FeatureTransformer) must exist');
+      assert.equal(graphAfterSecond.nodes[h100NodeId].level, 'L3_EXECUTION');
+      assert.equal(graphAfterSecond.nodes[transformerNodeId].level, 'L2_SUBSYSTEM');
+    });
+
+    test('relaxes coordinate constraints: user can drag node anywhere and coordinate is preserved on disk', async () => {
+      const relaxedPosition = { x: 888.5, y: 777.25 };
+
+      // Update node position via /api/graph/node-position
+      const posRes = await fetch(`${baseUrl}/api/graph/node-position`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nodeId: h100NodeId,
+          position: relaxedPosition
+        })
+      });
+      assert.equal(posRes.status, 200);
+
+      // Verify exact coordinates are persisted on disk and returned by /api/graph without collision repositioning
+      const updatedGraph = await (await fetch(`${baseUrl}/api/graph`)).json();
+      const node = updatedGraph.nodes[h100NodeId];
+      assert.ok(node, 'Node must exist in graph');
+      assert.equal(node.position.x, 888.5);
+      assert.equal(node.position.y, 777.25);
+      assert.equal(node.canvasMeta.position.x, 888.5);
+      assert.equal(node.canvasMeta.position.y, 777.25);
+
+      // Clean up test nodes to restore ML pipeline graph
+      await fetch(`${baseUrl}/api/graph/node/${encodeURIComponent(h100NodeId)}`, { method: 'DELETE' });
+      await fetch(`${baseUrl}/api/graph/node/${encodeURIComponent(transformerNodeId)}`, { method: 'DELETE' });
+
+      const finalGraph = await (await fetch(`${baseUrl}/api/graph`)).json();
+      assert.equal(Boolean(finalGraph.nodes[h100NodeId]), false, 'H100 test node must be cleaned up');
+      assert.equal(Boolean(finalGraph.nodes[transformerNodeId]), false, 'Transformer test node must be cleaned up');
+    });
+  });
+
+  test.describe('7. Drag-and-Drop Coordinate Preservation & Non-Displacement Suite', () => {
+    test.before(async () => {
+      await fetch(`${baseUrl}/api/projects/switch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: 'ml_pipeline' })
+      });
+    });
+
+    test('dropping a node at specific coordinates preserves all other node positions without displacement', async () => {
+      // 1. Capture snapshot of all baseline node coordinates
+      const baseline = await (await fetch(`${baseUrl}/api/graph`)).json();
+      const originalPositions = {};
+      Object.entries(baseline.nodes).forEach(([id, n]) => {
+        originalPositions[id] = { ...(n.canvasMeta?.position || n.position || { x: 0, y: 0 }) };
+      });
+      assert.ok(Object.keys(originalPositions).length >= 8, 'Must have at least 8 baseline nodes');
+
+      // 2. Drop a new node at a specific custom coordinate (e.g. 1420, 850)
+      const testDroppedNodeId = 'node_test_dnd_exact_coords';
+      const exactDropCoords = { x: 1420, y: 850 };
+      const dropRes = await fetch(`${baseUrl}/api/scaffold-blueprint`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          blueprintId: 'single_test_dnd',
+          blueprintTitle: 'TestDnDNode',
+          newNodes: [
+            {
+              id: testDroppedNodeId,
+              name: 'TestDnDNode',
+              kind: 'hardware',
+              level: 'L3_EXECUTION',
+              userAdded: true,
+              position: exactDropCoords,
+              canvasMeta: { position: exactDropCoords, userAdded: true }
+            }
+          ],
+          newEdges: [],
+          files: [],
+          scaffoldCode: false
+        })
+      });
+      assert.equal(dropRes.status, 200);
+
+      // 3. Verify graph on disk:
+      // a. New node must be exactly at (1420, 850)
+      const afterDrop = await (await fetch(`${baseUrl}/api/graph`)).json();
+      const droppedNode = afterDrop.nodes[testDroppedNodeId];
+      assert.ok(droppedNode, 'Dropped node must exist in graph');
+      assert.equal(droppedNode.position.x, exactDropCoords.x);
+      assert.equal(droppedNode.position.y, exactDropCoords.y);
+      assert.equal(droppedNode.canvasMeta.position.x, exactDropCoords.x);
+      assert.equal(droppedNode.canvasMeta.position.y, exactDropCoords.y);
+
+      // b. ALL other existing nodes must be at their EXACT original positions (0 displacement)
+      for (const [id, origPos] of Object.entries(originalPositions)) {
+        const currentNode = afterDrop.nodes[id];
+        assert.ok(currentNode, `Node ${id} must still exist`);
+        const currentPos = currentNode.canvasMeta?.position || currentNode.position;
+        assert.equal(
+          currentPos.x,
+          origPos.x,
+          `Node ${id} X position must NOT be displaced: expected ${origPos.x}, got ${currentPos.x}`
+        );
+        assert.equal(
+          currentPos.y,
+          origPos.y,
+          `Node ${id} Y position must NOT be displaced: expected ${origPos.y}, got ${currentPos.y}`
+        );
+      }
+
+      // 4. Drag existing node: update only testDroppedNodeId's position to (555, 333)
+      const newDragCoords = { x: 555, y: 333 };
+      const moveRes = await fetch(`${baseUrl}/api/graph/node-position`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nodeId: testDroppedNodeId,
+          position: newDragCoords
+        })
+      });
+      assert.equal(moveRes.status, 200);
+
+      const afterMove = await (await fetch(`${baseUrl}/api/graph`)).json();
+      assert.equal(afterMove.nodes[testDroppedNodeId].position.x, newDragCoords.x);
+      assert.equal(afterMove.nodes[testDroppedNodeId].position.y, newDragCoords.y);
+
+      // Verify other nodes remain unaffected
+      for (const [id, origPos] of Object.entries(originalPositions)) {
+        const currentPos = afterMove.nodes[id].canvasMeta?.position || afterMove.nodes[id].position;
+        assert.equal(currentPos.x, origPos.x, `Neighbor node ${id} X must remain unchanged during drag`);
+        assert.equal(currentPos.y, origPos.y, `Neighbor node ${id} Y must remain unchanged during drag`);
+      }
+
+      // Clean up test node
+      await fetch(`${baseUrl}/api/graph/node/${encodeURIComponent(testDroppedNodeId)}`, { method: 'DELETE' });
+    });
+  });
 });

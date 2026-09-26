@@ -637,6 +637,8 @@ function computeAppHorizontalPipelineLayout(visibleNodeList, rawGraph, tree, opt
   });
 
   function getPriority(id) {
+    if (id === 'node_categoryhome') return 12;
+    if (id === 'node_landmarklist') return 12;
     if (id === 'node_badge') return 10;
     if (id === 'node_hikebadge') return 9;
     if (id === 'node_hikeview') return 8;
@@ -744,6 +746,10 @@ function computeAppHorizontalPipelineLayout(visibleNodeList, rawGraph, tree, opt
   Object.values(rawGraph?.edges || {}).forEach((e) => {
     if (e.edgeKind === 'stateBinding') {
       feedbackEdges.push(e.id);
+    } else if (positions[e.sourceNodeId] && positions[e.targetNodeId]) {
+      if (positions[e.sourceNodeId].x > positions[e.targetNodeId].x) {
+        feedbackEdges.push(e.id);
+      }
     }
   });
 

@@ -241,6 +241,7 @@ export default function App() {
   const [scaffoldCodeEnabled, setScaffoldCodeEnabled] = useState(true);
   const [isDragOverCanvas, setIsDragOverCanvas] = useState(false);
   const [activeDragPreview, setActiveDragPreview] = useState(null);
+  const activeDragPreviewRef = useRef(null);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -330,6 +331,10 @@ export default function App() {
 
   // Layout Mode & Tab-as-a-Branch Tree View (3 Fluid Lenses: Tree, Pipeline, Mesh)
   const [layoutMode, setLayoutMode] = useState('tree'); // 'tree' | 'pipeline' | 'mesh'
+  const layoutModeRef = useRef(layoutMode);
+  useEffect(() => {
+    layoutModeRef.current = layoutMode;
+  }, [layoutMode]);
   const meshPositionsRef = useRef({});
   const [activeBranchId, setActiveBranchId] = useState('all');
   const [isTreeNavigatorOpen, setIsTreeNavigatorOpen] = useState(false);
@@ -785,7 +790,7 @@ export default function App() {
   }, [nodes]);
 
   // Transform SaagGraph to React Flow format
-  const transformGraphToReactFlow = useCallback((saagGraph) => {
+  const transformGraphToReactFlow = useCallback((saagGraph, shouldFitView = false) => {
     if (!saagGraph || !saagGraph.nodes) return;
 
     rawGraphRef.current = saagGraph;
@@ -794,11 +799,13 @@ export default function App() {
 
     const tree = decomposeAppTree(saagGraph);
     const currentLevel = abstractionLevelRef.current || 'L1';
+    const activeLayout = layoutModeRef.current || layoutMode;
 
     // Filter visible nodes based on active abstraction level and layout mode
     const rawNodes = saagGraph.nodes;
     const initialVisible = Object.values(rawNodes).filter((n) => {
       if (!isSystemDesignNode(n)) return false;
+      if (n.userAdded || n.canvasMeta?.userAdded || n.data?.userAdded) return true;
       if (currentLevel === 'L1') {
         return n.level === 'L1_SCREEN' || n.level === 'L1_SYSTEM' || !n.level;
       }
@@ -832,7 +839,9 @@ export default function App() {
 
     const rfNodes = Object.values(saagGraph.nodes).map((node) => {
       const savedPos = meshPositionsRef.current[node.id] || node.canvasMeta?.position || node.position;
-      const computedPos = layoutMode === 'mesh'
+      const isUserAdded = Boolean(node.userAdded || node.canvasMeta?.userAdded || node.data?.userAdded);
+      const hasSavedPos = Boolean(meshPositionsRef.current[node.id] || node.canvasMeta?.position || node.position);
+      const computedPos = (activeLayout === 'mesh' || isUserAdded || hasSavedPos)
         ? (savedPos || { x: 100, y: 100 })
         : ((isIosProject && adaptivePositions[node.id]) || fullTreePositions[node.id] || savedPos || { x: 100, y: 100 });
       return {
@@ -841,9 +850,11 @@ export default function App() {
         position: computedPos,
         data: {
           ...node,
+          userAdded: isUserAdded,
           canvasMeta: {
             ...node.canvasMeta,
-            position: computedPos
+            position: computedPos,
+            userAdded: isUserAdded
           },
           onScreenAction: handleScreenAction,
           onToggleSqueeze: handleToggleSqueeze,
@@ -878,7 +889,7 @@ export default function App() {
     setNodes(rfNodes);
     setEdges(rfEdges);
 
-    if (reactFlowInstanceRef.current) {
+    if (shouldFitView && reactFlowInstanceRef.current) {
       setTimeout(() => {
         reactFlowInstanceRef.current?.fitView({ padding: 0.25, duration: 400 });
       }, 100);
@@ -897,7 +908,7 @@ export default function App() {
       const res = await fetch('/api/graph');
       if (!res.ok) throw new Error(`HTTP error ${res.status}: ${res.statusText}`);
       const data = await res.json();
-      transformGraphToReactFlow(data);
+      transformGraphToReactFlow(data, true);
       setGraphLoadError(null);
     } catch (err) {
       console.error('Failed to load graph:', err);
@@ -956,7 +967,7 @@ export default function App() {
       const data = await res.json();
       setActiveProjectId(data.activeProjectId);
       if (data.graph) {
-        transformGraphToReactFlow(data.graph);
+        transformGraphToReactFlow(data.graph, true);
         setSelectedElement(null);
         setAgentNodeIds([]);
         setExpandedCompoundIds(new Set());
@@ -1065,7 +1076,24 @@ export default function App() {
               return;
             }
             if (message.type === 'GRAPH_UPDATED' && message.graph) {
-              transformRef.current?.(message.graph);
+              if (message.source === 'BLUEPRINT_SCAFFOLD' || message.source === 'JSON_WATCHER') {
+                // Background update confirmed on disk: update rawGraph references without resetting live node positions
+                rawGraphRef.current = message.graph;
+                setRawGraph(message.graph);
+                const tree = buildViewTree(message.graph);
+                setTreeData(tree);
+                return;
+              }
+
+              // Snapshot live canvas positions before transforming graph from external updates
+              setNodes((currentNodes) => {
+                currentNodes.forEach((n) => {
+                  if (n.position) meshPositionsRef.current[n.id] = n.position;
+                });
+                return currentNodes;
+              });
+
+              transformRef.current?.(message.graph, false);
               if (message.source === 'SWIFT_WATCHER' || message.source === 'INLINE_EDIT') {
                 setHotReloadToast({
                   filename: message.changedFile ? `${message.changedFile}${message.newLabel ? ` ("${message.newLabel}")` : ''}` : 'Swift Source',
@@ -1114,8 +1142,21 @@ export default function App() {
       // Filter out non-architectural noise (abstract away what an LLM handles: tests, drawing helpers)
       if (!isSystemDesignNode(n)) return false;
 
+      // Always show user-added nodes so subsequent nodes are never hidden
+      if (n.data?.userAdded || rawNodes[n.id]?.userAdded) {
+        return true;
+      }
+
       // Always show currently selected element so it never vanishes while inspected
       if (selectedElement && selectedElement.id === n.id) {
+        return true;
+      }
+
+      // In mesh mode, relax coordinate and level constraints: show all architectural nodes
+      if (layoutMode === 'mesh') {
+        if (parentId && !expandedCompoundIds.has(parentId)) {
+          return false;
+        }
         return true;
       }
 
@@ -1823,8 +1864,39 @@ export default function App() {
         meshPositionsRef.current[n.id] = n.position;
       });
 
-      // 1. Immediately update ReactFlow visual nodes and edges
-      setNodes((prev) => [...prev, ...instantiated.nodes]);
+      const userMarkedNodes = instantiated.nodes.map((n) => ({
+        ...n,
+        data: {
+          ...n.data,
+          userAdded: true,
+          canvasMeta: {
+            ...n.data?.canvasMeta,
+            userAdded: true
+          }
+        }
+      }));
+
+      // Auto-advance abstraction level if blueprint introduces deeper subsystems or execution units
+      const hasL3 = userMarkedNodes.some((n) => n.data?.level === 'L3_PRIMITIVE' || n.data?.level === 'L3_EXECUTION');
+      const hasL2 = userMarkedNodes.some((n) => n.data?.level === 'L2_SUBSYSTEM' || n.data?.level === 'L2_COMPONENT');
+      if (hasL3 && abstractionLevel !== 'L3') {
+        setAbstractionLevel('L3');
+        abstractionLevelRef.current = 'L3';
+      } else if (hasL2 && abstractionLevel === 'L1') {
+        setAbstractionLevel('L2');
+        abstractionLevelRef.current = 'L2';
+      }
+
+      // 1. Immediately update ReactFlow visual nodes and edges, snapshotting existing nodes
+      setNodes((prev) => {
+        prev.forEach((n) => {
+          if (n.position) meshPositionsRef.current[n.id] = n.position;
+        });
+        userMarkedNodes.forEach((n) => {
+          if (n.position) meshPositionsRef.current[n.id] = n.position;
+        });
+        return [...prev, ...userMarkedNodes];
+      });
       setEdges((prev) => [...prev, ...instantiated.edges]);
 
       // 2. Synchronize rawGraph state
@@ -1832,14 +1904,15 @@ export default function App() {
         if (!prev) return prev;
         const nextNodes = { ...(prev.nodes || {}) };
         const nextEdges = { ...(prev.edges || {}) };
-        instantiated.nodes.forEach((n) => {
+        userMarkedNodes.forEach((n) => {
           nextNodes[n.id] = {
             ...n.data,
             id: n.id,
             position: n.position,
             canvasMeta: {
               ...(n.data?.canvasMeta || {}),
-              position: n.position
+              position: n.position,
+              userAdded: true
             }
           };
         });
@@ -1867,7 +1940,7 @@ export default function App() {
         body: JSON.stringify({
           blueprintId: instantiated.blueprintId,
           blueprintTitle: instantiated.blueprintTitle,
-          newNodes: instantiated.nodes,
+          newNodes: userMarkedNodes,
           newEdges: instantiated.edges,
           files: instantiated.filesToScaffold,
           scaffoldCode: scaffoldCodeEnabled
@@ -1882,8 +1955,8 @@ export default function App() {
       // 4. Provide feedback toast
       const filesCount = data.scaffoldedFiles?.length || 0;
       const toastMsg = filesCount > 0
-        ? `Added ${instantiated.nodes.length} nodes & created ${filesCount} starter files on disk!`
-        : `Added ${instantiated.nodes.length} nodes & ${instantiated.edges.length} pre-wired connections!`;
+        ? `Added ${userMarkedNodes.length} nodes & created ${filesCount} starter files on disk!`
+        : `Added ${userMarkedNodes.length} nodes & ${instantiated.edges.length} pre-wired connections!`;
 
       setScaffoldToast({
         title: instantiated.blueprintTitle,
@@ -1892,10 +1965,10 @@ export default function App() {
       setTimeout(() => setScaffoldToast(null), 4500);
 
       // 5. Select first node & smoothly center view (only on explicit click/double-click, not on direct drag-and-drop)
-      if (instantiated.nodes.length > 0) {
-        setSelectedElement(instantiated.nodes[0]);
+      if (userMarkedNodes.length > 0) {
+        setSelectedElement(userMarkedNodes[0]);
         if (shouldCenterView && reactFlowInstanceRef.current) {
-          const firstPos = instantiated.nodes[0].position;
+          const firstPos = userMarkedNodes[0].position;
           reactFlowInstanceRef.current.setCenter(firstPos.x + 120, firstPos.y + 100, {
             zoom: 0.95,
             duration: 500
@@ -1906,7 +1979,7 @@ export default function App() {
       console.error('Failed to add capability blueprint:', err);
       alert(`Error adding capability blueprint: ${err.message}`);
     }
-  }, [nodes, scaffoldCodeEnabled, setNodes, setEdges]);
+  }, [nodes, abstractionLevel, scaffoldCodeEnabled, setNodes, setEdges]);
 
   // Handle dropping a Single Architectural Node from the palette
   const handleDropSingleNode = useCallback(async (template, dropPosition, shouldCenterView = true) => {
@@ -1921,12 +1994,26 @@ export default function App() {
         finalNodeId = `${baseId}_${counter++}`;
       }
 
+      // Auto-advance abstraction level if adding deeper L2/L3 subsystem/primitive node so it is visible immediately across views
+      if (template.level === 'L3_PRIMITIVE' || template.level === 'L3_EXECUTION') {
+        if (abstractionLevel !== 'L3') {
+          setAbstractionLevel('L3');
+          abstractionLevelRef.current = 'L3';
+        }
+      } else if (template.level === 'L2_SUBSYSTEM' || template.level === 'L2_COMPONENT') {
+        if (abstractionLevel === 'L1') {
+          setAbstractionLevel('L2');
+          abstractionLevelRef.current = 'L2';
+        }
+      }
+
       const rfNode = {
         id: finalNodeId,
         type: 'saagNode',
         position: dropPosition,
         data: {
           id: finalNodeId,
+          userAdded: true,
           name: template.name,
           kind: template.kind,
           level: template.level || 'L1_SCREEN',
@@ -1934,7 +2021,8 @@ export default function App() {
           sourceFile: template.sourceFile || '',
           canvasMeta: {
             position: dropPosition,
-            color: template.color || undefined
+            color: template.color || undefined,
+            userAdded: true
           },
           inputs: template.inputs || [],
           outputs: template.outputs || [],
@@ -1949,12 +2037,15 @@ export default function App() {
         }
       };
 
-      // 1. Immediately update ReactFlow visual nodes
-      setNodes((prev) => [...prev, rfNode]);
+      // 1. Immediately update ReactFlow visual nodes, snapshotting existing nodes
+      setNodes((prev) => {
+        prev.forEach((n) => {
+          if (n.position) meshPositionsRef.current[n.id] = n.position;
+        });
+        meshPositionsRef.current[finalNodeId] = dropPosition;
+        return [...prev, rfNode];
+      });
       setSelectedElement(rfNode);
-
-      // Record in meshPositionsRef so Mesh mode preserves this node at its drop position
-      meshPositionsRef.current[finalNodeId] = dropPosition;
 
       // 2. Synchronize rawGraph state
       setRawGraph((prev) => {
@@ -1966,7 +2057,8 @@ export default function App() {
           position: dropPosition,
           canvasMeta: {
             ...(rfNode.data?.canvasMeta || {}),
-            position: dropPosition
+            position: dropPosition,
+            userAdded: true
           }
         };
         const updated = { ...prev, nodes: nextNodes };
@@ -1974,43 +2066,35 @@ export default function App() {
         return updated;
       });
 
-      // 3. Call backend scaffolding API to persist starter code & graph if enabled
+      // 3. Call backend scaffolding API to persist node into active graph on disk (and files if enabled)
       const files = (template.sourceFile && template.codeTemplate)
         ? [{ filePath: template.sourceFile, content: template.codeTemplate, nodeId: finalNodeId }]
         : [];
 
-      if (scaffoldCodeEnabled && files.length > 0) {
-        try {
-          const res = await fetch('/api/scaffold-blueprint', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              blueprintId: template.id || `single_${template.kind}`,
-              blueprintTitle: template.name,
-              newNodes: [rfNode],
-              newEdges: [],
-              files,
-              scaffoldCode: true
-            })
-          });
-          const data = await res.json();
-          const filesCount = data.scaffoldedFiles?.length || 0;
-          setScaffoldToast({
-            title: template.name,
-            message: filesCount > 0
-              ? `Added "${template.name}" & scaffolded ${template.sourceFile} on disk!`
-              : `Added "${template.name}" node to canvas.`
-          });
-          setTimeout(() => setScaffoldToast(null), 4000);
-        } catch (err) {
-          console.error('Failed to scaffold single node file:', err);
-          setScaffoldToast({
-            title: template.name,
-            message: `Added "${template.name}" node to canvas.`
-          });
-          setTimeout(() => setScaffoldToast(null), 3000);
-        }
-      } else {
+      try {
+        const res = await fetch('/api/scaffold-blueprint', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            blueprintId: template.id || `single_${template.kind}`,
+            blueprintTitle: template.name,
+            newNodes: [rfNode],
+            newEdges: [],
+            files,
+            scaffoldCode: scaffoldCodeEnabled && files.length > 0
+          })
+        });
+        const data = await res.json();
+        const filesCount = data.scaffoldedFiles?.length || 0;
+        setScaffoldToast({
+          title: template.name,
+          message: filesCount > 0
+            ? `Added "${template.name}" & scaffolded ${template.sourceFile} on disk!`
+            : `Added "${template.name}" node to canvas.`
+        });
+        setTimeout(() => setScaffoldToast(null), 4000);
+      } catch (err) {
+        console.error('Failed to scaffold single node file:', err);
         setScaffoldToast({
           title: template.name,
           message: `Added "${template.name}" node to canvas.`
@@ -2029,7 +2113,7 @@ export default function App() {
       console.error('Failed to add node template:', err);
       alert(`Error adding node template: ${err.message}`);
     }
-  }, [nodes, scaffoldCodeEnabled, setNodes, setRawGraph]);
+  }, [nodes, abstractionLevel, scaffoldCodeEnabled, setNodes, setRawGraph]);
 
   // Pro Direct-Manipulation Pointer Drag Handlers (60/120fps direct live node rendering)
   const handlePointerDragStart = useCallback(({ type, isBlueprint, item, clientX, clientY }) => {
@@ -2061,7 +2145,7 @@ export default function App() {
 
     const dim = isBlueprint ? { width: 320, height: 160 } : getNodeDimensions(item);
 
-    setActiveDragPreview({
+    const previewData = {
       type,
       isBlueprint,
       item,
@@ -2071,7 +2155,10 @@ export default function App() {
       flowPos,
       zoom,
       dimensions: dim
-    });
+    };
+
+    activeDragPreviewRef.current = previewData;
+    setActiveDragPreview(previewData);
   }, []);
 
   const handlePointerDragMove = useCallback(({ clientX, clientY }) => {
@@ -2103,7 +2190,7 @@ export default function App() {
         }
       }
 
-      return {
+      const nextPreview = {
         ...prev,
         clientX,
         clientY,
@@ -2111,61 +2198,59 @@ export default function App() {
         flowPos,
         zoom
       };
+      activeDragPreviewRef.current = nextPreview;
+      return nextPreview;
     });
   }, []);
 
   const handlePointerDragEnd = useCallback((dropEvent) => {
-    setActiveDragPreview((current) => {
-      if (!dropEvent || !current) return null;
+    const current = activeDragPreviewRef.current;
+    activeDragPreviewRef.current = null;
+    setActiveDragPreview(null);
 
-      const { clientX, clientY } = dropEvent;
-      const wrapper = document.querySelector('.saag-canvas-wrapper');
-      if (!wrapper) return null;
+    if (!dropEvent || !current) return;
 
-      const rect = wrapper.getBoundingClientRect();
-      const isInsideCanvas = (
-        clientX >= rect.left &&
-        clientX <= rect.right &&
-        clientY >= rect.top &&
-        clientY <= rect.bottom
-      );
+    const { clientX, clientY } = dropEvent;
+    const wrapper = document.querySelector('.saag-canvas-wrapper');
+    if (!wrapper) return;
 
-      if (isInsideCanvas && reactFlowInstanceRef.current) {
-        const zoom = reactFlowInstanceRef.current.getZoom?.() ?? 1;
-        const dim = current.dimensions || (current.isBlueprint ? { width: 320, height: 160 } : getNodeDimensions(current.item));
+    const rect = wrapper.getBoundingClientRect();
+    const isInsideCanvas = (
+      clientX >= rect.left &&
+      clientX <= rect.right &&
+      clientY >= rect.top &&
+      clientY <= rect.bottom
+    );
 
-        // Calculate exact screen top-left origin of the floating preview card
-        const screenLeft = clientX - (dim.width / 2) * zoom;
-        const screenTop = clientY - (dim.height / 2) * zoom;
+    if (isInsideCanvas && reactFlowInstanceRef.current) {
+      const dim = current.dimensions || (current.isBlueprint ? { width: 320, height: 160 } : getNodeDimensions(current.item));
 
-        let finalDropPos = { x: 250, y: 250 };
-        if (typeof reactFlowInstanceRef.current.screenToFlowPosition === 'function') {
-          finalDropPos = reactFlowInstanceRef.current.screenToFlowPosition({ x: screenLeft, y: screenTop });
-        } else if (typeof reactFlowInstanceRef.current.project === 'function') {
-          finalDropPos = reactFlowInstanceRef.current.project({
-            x: screenLeft - rect.left,
-            y: screenTop - rect.top
-          });
-        }
-
-        // Close Library HUD on drop to immediately focus on canvas
-        setIsBlueprintPaletteOpen(false);
-
-        // Seamlessly transition to 'mesh' mode (Freeform disposition) so custom drop coordinates are preserved and not overridden by tree layout
-        if (layoutMode !== 'mesh') {
-          setLayoutMode('mesh');
-        }
-
-        if (current.isBlueprint) {
-          handleInstantiateBlueprint(current.item, finalDropPos, false);
-        } else {
-          handleDropSingleNode(current.item, finalDropPos, false);
-        }
+      let flowPos = { x: 250, y: 250 };
+      if (typeof reactFlowInstanceRef.current.screenToFlowPosition === 'function') {
+        flowPos = reactFlowInstanceRef.current.screenToFlowPosition({ x: clientX, y: clientY });
+      } else if (typeof reactFlowInstanceRef.current.project === 'function') {
+        flowPos = reactFlowInstanceRef.current.project({
+          x: clientX - rect.left,
+          y: clientY - rect.top
+        });
       }
 
-      return null;
-    });
-  }, [layoutMode, handleInstantiateBlueprint, handleDropSingleNode]);
+      // Center card on cursor matching the preview badge
+      const finalDropPos = {
+        x: Math.round(flowPos.x - dim.width / 2),
+        y: Math.round(flowPos.y - dim.height / 2)
+      };
+
+      // Close Library HUD on drop to immediately focus on canvas
+      setIsBlueprintPaletteOpen(false);
+
+      if (current.isBlueprint) {
+        handleInstantiateBlueprint(current.item, finalDropPos, false);
+      } else {
+        handleDropSingleNode(current.item, finalDropPos, false);
+      }
+    }
+  }, [handleInstantiateBlueprint, handleDropSingleNode]);
 
   // Drag and Drop handlers for ReactFlow canvas (HTML5 fallback)
   const handleDragOver = useCallback((e) => {
@@ -2224,29 +2309,27 @@ export default function App() {
     setIsBlueprintPaletteOpen(false);
 
     const wrapper = document.querySelector('.saag-canvas-wrapper');
-    const zoom = reactFlowInstanceRef.current?.getZoom?.() ?? 1;
     const targetDim = activeItem?.dimensions || (activeItem?.isBlueprint ? { width: 320, height: 160 } : (activeItem ? getNodeDimensions(activeItem.item || activeItem) : { width: 280, height: 140 }));
-    const screenLeft = e.clientX - (targetDim.width / 2) * zoom;
-    const screenTop = e.clientY - (targetDim.height / 2) * zoom;
 
     let dropPos = { x: 250, y: 250 };
     if (reactFlowInstanceRef.current) {
       if (typeof reactFlowInstanceRef.current.screenToFlowPosition === 'function') {
-        dropPos = reactFlowInstanceRef.current.screenToFlowPosition({
-          x: screenLeft,
-          y: screenTop
-        });
+        const flowPos = reactFlowInstanceRef.current.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+        dropPos = {
+          x: Math.round(flowPos.x - targetDim.width / 2),
+          y: Math.round(flowPos.y - targetDim.height / 2)
+        };
       } else if (typeof reactFlowInstanceRef.current.project === 'function') {
         const bounds = (wrapper || e.currentTarget).getBoundingClientRect();
-        dropPos = reactFlowInstanceRef.current.project({
-          x: screenLeft - bounds.left,
-          y: screenTop - bounds.top
+        const flowPos = reactFlowInstanceRef.current.project({
+          x: e.clientX - bounds.left,
+          y: e.clientY - bounds.top
         });
+        dropPos = {
+          x: Math.round(flowPos.x - targetDim.width / 2),
+          y: Math.round(flowPos.y - targetDim.height / 2)
+        };
       }
-    }
-
-    if (layoutMode !== 'mesh') {
-      setLayoutMode('mesh');
     }
 
     // 1. Try unified application/saag-dnd
@@ -2289,7 +2372,7 @@ export default function App() {
         console.error('Failed to parse dropped blueprint data:', err);
       }
     }
-  }, [layoutMode, handleInstantiateBlueprint, handleDropSingleNode]);
+  }, [handleInstantiateBlueprint, handleDropSingleNode]);
 
   // Click-to-add handler for capability blueprints from palette
   const handleAddBlueprintFromModal = useCallback((blueprint) => {
@@ -2304,11 +2387,8 @@ export default function App() {
         });
       }
     }
-    if (layoutMode !== 'mesh') {
-      setLayoutMode('mesh');
-    }
     handleInstantiateBlueprint(blueprint, centerPos);
-  }, [layoutMode, handleInstantiateBlueprint]);
+  }, [handleInstantiateBlueprint]);
 
   // Click-to-add handler for single node templates from palette
   const handleAddNodeTemplateFromPalette = useCallback((template) => {
@@ -2323,16 +2403,20 @@ export default function App() {
         });
       }
     }
-    if (layoutMode !== 'mesh') {
-      setLayoutMode('mesh');
-    }
     // Auto-advance abstraction level if adding deeper L2/L3 subsystem/primitive node so it is visible immediately
-    if (abstractionLevel === 'L1' && template.level && template.level !== 'L1_SCREEN' && template.level !== 'L1_SYSTEM') {
-      setAbstractionLevel('L2');
-      abstractionLevelRef.current = 'L2';
+    if (template.level === 'L3_PRIMITIVE' || template.level === 'L3_EXECUTION') {
+      if (abstractionLevel !== 'L3') {
+        setAbstractionLevel('L3');
+        abstractionLevelRef.current = 'L3';
+      }
+    } else if (template.level === 'L2_SUBSYSTEM' || template.level === 'L2_COMPONENT') {
+      if (abstractionLevel === 'L1') {
+        setAbstractionLevel('L2');
+        abstractionLevelRef.current = 'L2';
+      }
     }
     handleDropSingleNode(template, centerPos);
-  }, [layoutMode, abstractionLevel, handleDropSingleNode]);
+  }, [abstractionLevel, handleDropSingleNode]);
 
   // Handle Multi-Scale Abstraction Level Change with Zero-Void Adaptive Packing
   const handleLevelChange = useCallback((newLevel) => {
@@ -2343,6 +2427,9 @@ export default function App() {
     const visibleUnderNewLevel = nodes.filter((n) => {
       const nodeLevel = n.data?.level || rawNodes[n.id]?.level || 'L1_SCREEN';
       const parentId = n.data?.parentId || rawNodes[n.id]?.parentId;
+
+      // User-added nodes are always preserved across level changes
+      if (n.data?.userAdded || rawNodes[n.id]?.userAdded) return true;
 
       if (newLevel === 'L1') {
         if (parentId) return expandedCompoundIds.has(parentId);
@@ -2391,10 +2478,26 @@ export default function App() {
     } else if (targetMode === 'tree' && treeData) {
       const adaptivePositions = computeAdaptiveTreeLayout(targetNodes, treeData, rawGraphRef.current);
       const fullTreePositions = treeData.treePositions || {};
-      return { ...fullTreePositions, ...adaptivePositions };
+      const positions = { ...fullTreePositions, ...adaptivePositions };
+      targetNodes.forEach((n) => {
+        const saved = meshPositionsRef.current[n.id] || n.position;
+        const isUserAdded = Boolean(n.data?.userAdded || rawGraphRef.current?.nodes?.[n.id]?.userAdded);
+        if (isUserAdded || !positions[n.id]) {
+          positions[n.id] = saved || { x: 100, y: 100 };
+        }
+      });
+      return positions;
     } else if (targetMode === 'pipeline') {
       const pipelineRes = computeTemporalPipelineLayout(targetNodes, rawGraphRef.current, { treeData });
-      return pipelineRes.positions || {};
+      const positions = { ...(pipelineRes.positions || {}) };
+      targetNodes.forEach((n) => {
+        const saved = meshPositionsRef.current[n.id] || n.position;
+        const isUserAdded = Boolean(n.data?.userAdded || rawGraphRef.current?.nodes?.[n.id]?.userAdded);
+        if (isUserAdded || !positions[n.id]) {
+          positions[n.id] = saved || { x: 100, y: 100 };
+        }
+      });
+      return positions;
     }
     return {};
   }, [treeData]);
@@ -2434,59 +2537,54 @@ export default function App() {
     }
   }, [displayNodes, layoutMode, computePositionsForMode, setNodes]);
 
-  // Dynamic Live Rearrangement: when dragging a node, push overlapping neighbors aside
+  // Relaxed Freeform Node Drag Stop: Preserve exact drop coordinates without algorithmic repositioning
   const handleNodeDragStop = useCallback((event, movedNode) => {
     if (!movedNode) return;
-    const currentPositions = {};
-    const nodeMap = {};
-    nodes.forEach((n) => {
-      currentPositions[n.id] = n.id === movedNode.id ? movedNode.position : n.position;
-      nodeMap[n.id] = n.data || n;
-    });
 
-    const collisions = detectCollisions(currentPositions, nodeMap, 30, 30);
-    const isMovedColliding = collisions.some((c) => c.idA === movedNode.id || c.idB === movedNode.id);
-
-    let finalPositions = currentPositions;
-    if (isMovedColliding) {
-      const { positions: rearranged } = rearrangeNodes(currentPositions, nodeMap, movedNode.id, {
-        paddingX: 45,
-        paddingY: 40,
-        maxIterations: 25
+    // 1. Snapshot all node positions and update moved node
+    meshPositionsRef.current[movedNode.id] = movedNode.position;
+    setNodes((nds) => {
+      nds.forEach((n) => {
+        if (n.id === movedNode.id) {
+          meshPositionsRef.current[n.id] = movedNode.position;
+        } else if (n.position) {
+          meshPositionsRef.current[n.id] = n.position;
+        }
       });
-      finalPositions = rearranged;
-    }
-
-    // Record all positions into meshPositionsRef (Mesh acts as custom freeform disposition)
-    Object.entries(finalPositions).forEach(([id, pos]) => {
-      meshPositionsRef.current[id] = pos;
-    });
-
-    // Seamlessly transition to 'mesh' mode (Option 1) if currently viewing Tree or Pipeline
-    if (layoutMode !== 'mesh') {
-      setLayoutMode('mesh');
-    }
-
-    setNodes((nds) =>
-      nds.map((n) => {
-        const newPos = finalPositions[n.id];
-        if (newPos && (newPos.x !== n.position.x || newPos.y !== n.position.y)) {
+      return nds.map((n) => {
+        if (n.id === movedNode.id) {
           return {
             ...n,
-            position: newPos,
+            position: movedNode.position,
             data: {
               ...n.data,
               canvasMeta: {
                 ...n.data?.canvasMeta,
-                position: newPos
+                position: movedNode.position
               }
             }
           };
         }
         return n;
-      })
-    );
-  }, [nodes, layoutMode, setNodes]);
+      });
+    });
+
+    // 2. Update rawGraphRef in memory
+    if (rawGraphRef.current?.nodes?.[movedNode.id]) {
+      rawGraphRef.current.nodes[movedNode.id].position = movedNode.position;
+      if (!rawGraphRef.current.nodes[movedNode.id].canvasMeta) {
+        rawGraphRef.current.nodes[movedNode.id].canvasMeta = {};
+      }
+      rawGraphRef.current.nodes[movedNode.id].canvasMeta.position = movedNode.position;
+    }
+
+    // 3. Fire background save to server to persist coordinate on disk
+    fetch('/api/graph/node-position', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nodeId: movedNode.id, position: movedNode.position })
+    }).catch((err) => console.warn('Background position sync error:', err));
+  }, [setNodes]);
 
   // Manual Trigger: Auto-Space & Pack Canvas
   const handleRearrangeAndPack = useCallback(() => {
@@ -2653,6 +2751,10 @@ export default function App() {
           onOpenBottlenecks={handleOpenBottlenecks}
           layoutMode={layoutMode}
           onLayoutModeChange={(mode) => {
+            nodes.forEach((n) => {
+              if (n.position) meshPositionsRef.current[n.id] = n.position;
+            });
+            layoutModeRef.current = mode;
             setLayoutMode(mode);
             const newPositions = computePositionsForMode(mode, displayNodes);
             setNodes((nds) =>

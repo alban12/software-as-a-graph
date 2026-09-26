@@ -62,6 +62,32 @@ export default function BlueprintPaletteModal({
   const [activeDomain, setActiveDomain] = useState('all'); // 'all' | 'ios' | 'agents' | 'ml'
   const [isDraggingItem, setIsDraggingItem] = useState(false);
 
+  // Native HTML5 drag-and-drop starter
+  const handleDragStart = (e, item, isBlueprint) => {
+    const payload = {
+      type: isBlueprint ? 'blueprint' : 'node',
+      [isBlueprint ? 'blueprint' : 'nodeTemplate']: item
+    };
+    try {
+      e.dataTransfer.setData('application/saag-dnd', JSON.stringify(payload));
+      e.dataTransfer.setData(isBlueprint ? 'application/saag-blueprint' : 'application/saag-node', JSON.stringify(item));
+      e.dataTransfer.effectAllowed = 'copy';
+      window.__saagActiveDragItem = {
+        type: isBlueprint ? 'blueprint' : 'node',
+        isBlueprint,
+        item,
+        title: isBlueprint ? item.title : item.name,
+        icon: item.icon,
+        badge: item.badge
+      };
+      const ghost = createSaagDragGhost(item.icon, isBlueprint ? item.title : item.name, item.badge, isBlueprint);
+      e.dataTransfer.setDragImage(ghost, 60, 20);
+      setTimeout(() => {
+        try { if (ghost.parentNode) ghost.parentNode.removeChild(ghost); } catch (_) {}
+      }, 0);
+    } catch (_) {}
+  };
+
   // Pro direct-manipulation pointer drag handler (works across all pointer types, trackpad, mouse)
   const handleCardPointerDown = (e, item, isBlueprint) => {
     if (e.button !== 0) return;
@@ -319,6 +345,8 @@ export default function BlueprintPaletteModal({
                   <div
                     key={bp.id}
                     className="palette-item-card blueprint-style"
+                    draggable={true}
+                    onDragStart={(e) => handleDragStart(e, bp, true)}
                     onPointerDown={(e) => handleCardPointerDown(e, bp, true)}
                     onDoubleClick={() => onAddBlueprint?.(bp)}
                     title="Drag onto canvas, or double-click to insert"
@@ -386,6 +414,8 @@ export default function BlueprintPaletteModal({
                   <div
                     key={nt.id}
                     className="palette-item-card node-style"
+                    draggable={true}
+                    onDragStart={(e) => handleDragStart(e, nt, false)}
                     onPointerDown={(e) => handleCardPointerDown(e, nt, false)}
                     onDoubleClick={() => onAddNodeTemplate?.(nt)}
                     title="Drag onto canvas, or double-click to insert"
