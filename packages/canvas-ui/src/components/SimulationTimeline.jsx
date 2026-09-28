@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Pause, SkipBack, SkipForward, RotateCcw, X, Info, CheckCircle2, AlertCircle, Sparkles, Zap, HardDrive, Cpu } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, RotateCcw, X, Info, CheckCircle2, AlertCircle, Sparkles, Zap, HardDrive, Cpu, BookOpen } from 'lucide-react';
 
 export default function SimulationTimeline({
   simulation,
@@ -7,6 +7,7 @@ export default function SimulationTimeline({
   onStepChange,
   onClose,
   onExportTest,
+  onExportRunbook,
   onOpenProfiler,
   isPlaying,
   setIsPlaying
@@ -134,6 +135,16 @@ export default function SimulationTimeline({
             title="Export verified trace as native Apple Swift Testing code"
           >
             <span>Export Swift Test</span>
+          </button>
+
+          <button
+            className="btn-pill"
+            style={{ padding: '5px 10px', fontSize: '11px', borderColor: '#38bdf8', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: 5 }}
+            onClick={onExportRunbook}
+            title="Export architectural execution runbook with Mermaid sequence diagrams"
+          >
+            <BookOpen size={13} color="#38bdf8" />
+            <span>Runbook</span>
           </button>
 
           <button

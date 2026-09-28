@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext, createContext } from 'react';
 import {
   Lock,
   Mail,
@@ -28,8 +28,15 @@ import {
   TrendingUp,
   Activity,
   Heart,
-  Grid
+  Grid,
+  Zap
 } from 'lucide-react';
+
+export const DevicePreviewContext = createContext({
+  deviceType: 'iphone',
+  colorScheme: 'dark',
+  isMini: false
+});
 
 export default function ScreenPreview({
   nodeName = 'LoginView',
@@ -37,6 +44,8 @@ export default function ScreenPreview({
   filePath = '',
   variant = 'default',
   size = 'mini', // 'mini' | 'full'
+  deviceType = 'iphone', // 'iphone' | 'ipad' | 'watch'
+  colorScheme = 'dark', // 'dark' | 'light'
   customState = null,
   onClick = null,
   viewElements = null,
@@ -108,9 +117,10 @@ export default function ScreenPreview({
 
   const name = nodeName || '';
 
-  // -------------------------------------------------------------
-  // RENDERER 1: Reminders App (MakeItSo)
-  // -------------------------------------------------------------
+  const renderContent = () => {
+    // -------------------------------------------------------------
+    // RENDERER 1: Reminders App (MakeItSo)
+    // -------------------------------------------------------------
   if (name.includes('Reminder') || name.includes('MakeItSo') || name.includes('EmptyState')) {
     if (name.includes('Detail')) {
       return (
@@ -431,22 +441,28 @@ export default function ScreenPreview({
       <DeviceFrame isMini={isMini} onClick={onClick}>
         <div className="preview-tabview-container">
           <div className="preview-tab-content">
-            <CategoryHomeContent isMini={isMini} onElementAction={onElementAction} title={featuredLabel} />
+            {activeTab === 'list' ? (
+              <LandmarkListContent isMini={isMini} favoritesOnly={favoritesOnly} setFavoritesOnly={setFavoritesOnly} />
+            ) : (
+              <CategoryHomeContent isMini={isMini} onElementAction={onElementAction} title={featuredLabel} />
+            )}
           </div>
-          {/* iOS Bottom Tab Bar (Featured Selected) */}
+          {/* iOS Bottom Tab Bar (Featured & List Switching) */}
           <div className="ios-tab-bar">
             {tabElements.length > 0 ? (
               tabElements.map((tab, idx) => {
+                const tabKey = tab.tag || (idx === 0 ? 'featured' : idx === 1 ? 'list' : `tab_${idx}`);
+                const isSelected = activeTab === tabKey || (idx === 0 && activeTab === 'featured') || (idx === 1 && activeTab === 'list');
                 const isStar = tab.systemImage?.includes('star') || idx === 0;
                 const isEditingThisTab = editingTabId === (tab.id || `cat_tab_${idx}`);
                 if (isEditingThisTab) {
                   return (
                     <div
                       key={tab.id || idx}
-                      className="tab-bar-item editing active"
+                      className={`tab-bar-item editing ${isSelected ? 'active' : ''}`}
                       onClick={(e) => e.stopPropagation()}
                     >
-                      {isStar ? <Star size={isMini ? 12 : 18} fill="#0ea5e9" color="#0ea5e9" /> : <Layers size={isMini ? 12 : 18} color="#64748b" />}
+                      {isStar ? <Star size={isMini ? 12 : 18} fill={isSelected ? '#0ea5e9' : 'none'} color="#0ea5e9" /> : <Layers size={isMini ? 12 : 18} color={isSelected ? '#0ea5e9' : '#64748b'} />}
                       <input
                         type="text"
                         className="tab-inline-input"
@@ -468,28 +484,38 @@ export default function ScreenPreview({
                 return (
                   <div
                     key={tab.id || idx}
-                    className={`tab-bar-item ${idx === 0 ? 'active' : ''}`}
+                    className={`tab-bar-item ${isSelected ? 'active' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveTab(tabKey);
+                    }}
                     onDoubleClick={(e) => {
                       e.stopPropagation();
                       setEditingTabId(tab.id || `cat_tab_${idx}`);
                       setEditingTabLabel(tab.label);
                     }}
-                    title="Double-click to edit Swift code inline"
+                    title="Click to view tab, double-click to edit Swift code inline"
                   >
-                    {isStar ? <Star size={isMini ? 12 : 18} fill="#0ea5e9" color="#0ea5e9" /> : <Layers size={isMini ? 12 : 18} color="#64748b" />}
-                    <span style={idx === 0 ? { color: '#0ea5e9', fontWeight: 600 } : undefined}>{tab.label}</span>
+                    {isStar ? <Star size={isMini ? 12 : 18} fill={isSelected ? '#0ea5e9' : 'none'} color="#0ea5e9" /> : <Layers size={isMini ? 12 : 18} color={isSelected ? '#0ea5e9' : '#64748b'} />}
+                    <span style={isSelected ? { color: '#0ea5e9', fontWeight: 600 } : undefined}>{tab.label}</span>
                   </div>
                 );
               })
             ) : (
               <>
-                <div className="tab-bar-item active">
-                  <Star size={isMini ? 12 : 18} fill="#0ea5e9" color="#0ea5e9" />
-                  <span style={{ color: '#0ea5e9', fontWeight: 600 }}>{featuredLabel}</span>
+                <div
+                  className={`tab-bar-item ${activeTab === 'featured' ? 'active' : ''}`}
+                  onClick={(e) => { e.stopPropagation(); setActiveTab('featured'); }}
+                >
+                  <Star size={isMini ? 12 : 18} fill={activeTab === 'featured' ? '#0ea5e9' : 'none'} color="#0ea5e9" />
+                  <span style={{ color: activeTab === 'featured' ? '#0ea5e9' : '#64748b', fontWeight: activeTab === 'featured' ? 600 : 500 }}>{featuredLabel}</span>
                 </div>
-                <div className="tab-bar-item">
-                  <Layers size={isMini ? 12 : 18} color="#64748b" />
-                  <span>{listLabel}</span>
+                <div
+                  className={`tab-bar-item ${activeTab === 'list' ? 'active' : ''}`}
+                  onClick={(e) => { e.stopPropagation(); setActiveTab('list'); }}
+                >
+                  <Layers size={isMini ? 12 : 18} color={activeTab === 'list' ? '#0ea5e9' : '#64748b'} />
+                  <span style={{ color: activeTab === 'list' ? '#0ea5e9' : '#64748b', fontWeight: activeTab === 'list' ? 600 : 500 }}>{listLabel}</span>
                 </div>
               </>
             )}
@@ -1048,6 +1074,13 @@ export default function ScreenPreview({
       </div>
     </DeviceFrame>
   );
+  };
+
+  return (
+    <DevicePreviewContext.Provider value={{ deviceType, colorScheme, isMini }}>
+      {renderContent()}
+    </DevicePreviewContext.Provider>
+  );
 }
 
 // -------------------------------------------------------------
@@ -1161,19 +1194,100 @@ function LandmarkListContent({ isMini, favoritesOnly, setFavoritesOnly }) {
 }
 
 // -------------------------------------------------------------
-// Shared Device Bezel Frame
+// Shared Device Bezel Frame (Multi-Device: iPhone, iPad, Apple Watch)
 // -------------------------------------------------------------
-function DeviceFrame({ isMini, onClick, children }) {
+function DeviceFrame({ isMini: propMini, onClick, children }) {
+  const ctx = useContext(DevicePreviewContext) || {};
+  const isMini = propMini !== undefined ? propMini : (ctx.isMini ?? false);
+  const deviceType = ctx.deviceType || 'iphone';
+  const colorScheme = ctx.colorScheme || 'dark';
+
+  const [isIslandExpanded, setIsIslandExpanded] = useState(false);
+
+  // 1. Apple iPad Pro 11" Frame
+  if (deviceType === 'ipad') {
+    return (
+      <div
+        className={`device-chassis chassis-ipad ${isMini ? 'frame-mini-ipad' : 'frame-full-ipad'} scheme-${colorScheme}`}
+        onClick={onClick}
+        title={isMini ? 'Click frame to enlarge iPad preview' : undefined}
+      >
+        <div className="device-bezel ipad-bezel">
+          <div className="ipad-camera-dot" />
+          <div className="ipados-status-bar">
+            <span className="status-time">9:41 AM · Tue Sep 27</span>
+            <div className="status-icons">
+              <span className="ipad-battery-pct">98%</span>
+              <Battery size={isMini ? 9 : 13} />
+              <Wifi size={isMini ? 9 : 13} />
+            </div>
+          </div>
+          <div className="device-screen-scroll-container ipad-screen">
+            {children}
+          </div>
+          <div className="home-indicator ipad-home-indicator" />
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Apple Watch Ultra 2 Frame
+  if (deviceType === 'watch') {
+    return (
+      <div
+        className={`device-chassis chassis-watch ${isMini ? 'frame-mini-watch' : 'frame-full-watch'} scheme-${colorScheme}`}
+        onClick={onClick}
+        title={isMini ? 'Click frame to enlarge Apple Watch preview' : undefined}
+      >
+        <div className="watch-digital-crown" />
+        <div className="watch-action-button" />
+        <div className="device-bezel watch-bezel">
+          <div className="watchos-status-bar">
+            <span className="watch-time">09:41</span>
+            <div className="watch-rings">
+              <span className="watch-ring ring-red" />
+              <span className="watch-ring ring-green" />
+              <span className="watch-ring ring-blue" />
+            </div>
+          </div>
+          <div className="device-screen-scroll-container watch-screen">
+            {children}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. Apple iPhone 16 Pro Frame (Default)
   return (
     <div
-      className={`iphone-device-frame ${isMini ? 'frame-mini' : 'frame-full'}`}
+      className={`device-chassis chassis-iphone iphone-device-frame ${isMini ? 'frame-mini' : 'frame-full'} scheme-${colorScheme}`}
       onClick={onClick}
       title={isMini ? 'Click frame to enlarge screen preview' : undefined}
     >
       <div className="device-bezel">
-        {/* Dynamic Island */}
-        <div className="dynamic-island">
-          <div className="camera-lens" />
+        {/* Dynamic Island with Interactive Live Activity Expansion */}
+        <div
+          className={`dynamic-island ${isIslandExpanded ? 'expanded' : ''}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsIslandExpanded(!isIslandExpanded);
+          }}
+          title="Click to toggle Dynamic Island Live Activity"
+        >
+          {isIslandExpanded ? (
+            <div className="island-expanded-content">
+              <div className="island-pill-left">
+                <span className="live-dot" />
+                <span className="island-title">SaaG Active</span>
+              </div>
+              <div className="island-pill-right">
+                <span className="island-sub">⚡ 42ms</span>
+              </div>
+            </div>
+          ) : (
+            <div className="camera-lens" />
+          )}
         </div>
 
         {/* Status Bar */}

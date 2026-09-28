@@ -19,6 +19,7 @@ import InspectorSidebar from './components/InspectorSidebar';
 import SimulationModal from './components/SimulationModal';
 import SimulationTimeline from './components/SimulationTimeline';
 import ExportTestModal from './components/ExportTestModal';
+import RunbookExportModal from './components/RunbookExportModal';
 import DeviceZoomModal from './components/DeviceZoomModal';
 import ServicePreviewModal from './components/ServicePreviewModal';
 import AgentScopeModal from './components/AgentScopeModal';
@@ -199,6 +200,7 @@ export default function App() {
 
   const [isSimModalOpen, setIsSimModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isRunbookModalOpen, setIsRunbookModalOpen] = useState(false);
   const [isPerfModalOpen, setIsPerfModalOpen] = useState(false);
   const [zoomPreviewNode, setZoomPreviewNode] = useState(null);
   const [servicePreviewNode, setServicePreviewNode] = useState(null);
@@ -3028,6 +3030,7 @@ export default function App() {
         onStepChange={setCurrentStepIndex}
         onClose={handleStopSimulation}
         onExportTest={() => setIsExportModalOpen(true)}
+        onExportRunbook={() => setIsRunbookModalOpen(true)}
         onOpenProfiler={() => setIsPerfModalOpen(true)}
         isPlaying={isPlaying}
         setIsPlaying={setIsPlaying}
@@ -3036,6 +3039,13 @@ export default function App() {
       <ExportTestModal
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
+        simulation={simulation}
+        graph={rawGraph}
+      />
+
+      <RunbookExportModal
+        isOpen={isRunbookModalOpen}
+        onClose={() => setIsRunbookModalOpen(false)}
         simulation={simulation}
         graph={rawGraph}
       />
